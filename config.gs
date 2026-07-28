@@ -7,7 +7,7 @@
  * No pongas API keys ni secretos aqui. Para eso se usa PropertiesService.
  */
 const CONFIG = {
-  DRY_RUN: false,
+  DRY_RUN: true,
   EVALUATE_WITH_OPENAI_IN_DRY_RUN: false,
 
   MAX_RUNTIME_MS: 5 * 60 * 1000,
@@ -23,7 +23,7 @@ const CONFIG = {
   SHEETS_LOG_ID: "",
   SHEETS_LOG_SHEET_NAME: "bitacora",
 
-  ADMIN_EMAIL: "correo_del_profesor@dominio.edu.mx",
+  ADMIN_EMAIL: "docencia.mecanica@itcelaya.edu.mx",
 
   VALID_GRADE: 100,
   INVALID_GRADE: 60,
