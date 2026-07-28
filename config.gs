@@ -7,7 +7,7 @@
  * No pongas API keys ni secretos aqui. Para eso se usa PropertiesService.
  */
 const CONFIG = {
-  DRY_RUN: false,
+  DRY_RUN: true,
   EVALUATE_WITH_OPENAI_IN_DRY_RUN: false,
 
   MAX_RUNTIME_MS: 5 * 60 * 1000,
