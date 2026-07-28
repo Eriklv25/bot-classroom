@@ -1,0 +1,50 @@
+name: Deploy to Google Apps Script
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "**.gs"
+      - appsscript.json
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-apps-script
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: google-apps-script
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install clasp
+        run: npm install --global @google/clasp@3.3.0
+
+      - name: Configure clasp
+        env:
+          APPS_SCRIPT_ID: ${{ secrets.APPS_SCRIPT_ID }}
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          test -n "$APPS_SCRIPT_ID" || { echo "Missing APPS_SCRIPT_ID secret" >&2; exit 1; }
+          test -n "$CLASPRC_JSON" || { echo "Missing CLASPRC_JSON secret" >&2; exit 1; }
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+          node -e 'const fs = require("fs"); fs.writeFileSync(".clasp.json", JSON.stringify({ scriptId: process.env.APPS_SCRIPT_ID, rootDir: "." }, null, 2) + "\n");'
+
+      - name: Show files to deploy
+        run: clasp status
+
+      - name: Push to Apps Script
+        run: clasp push --force
