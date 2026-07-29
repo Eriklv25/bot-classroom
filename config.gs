@@ -48,6 +48,12 @@ const PROPERTY_KEYS = {
   OPENAI_API_KEY: "OPENAI_API_KEY"
 };
 
+/** Modos disponibles para el switch de revision de cada tarea. */
+const REVIEW_MODES = {
+  DOCUMENT_ONLY: "DOCUMENT_ONLY",
+  AI: "AI"
+};
+
 
 /**
  * Cursos donde el bot descubre tareas publicadas de forma automatica.
@@ -63,7 +69,8 @@ const COURSE_CONFIGS = [
 ];
 
 /**
- * Reglas que relacionan el titulo exacto de una tarea con su documento ejemplo.
+ * Reglas que relacionan una tarea con su modo de revision. DOCUMENT_ONLY solo
+ * comprueba que se cargo un PDF; AI puede usar exampleFileId o dejarlo vacio.
  *
  * La comparacion de title ignora espacios exteriores y mayusculas. Si una tarea
  * no coincide con una regla, se omite para evitar evaluarla por error.
@@ -72,6 +79,7 @@ const TASK_RULES = [
   {
     enabled: true,
     title: "Prueba calificacion",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "10osK-b-4ikNS-kIVCBa6_qi6zKTnDfSv",
     promptType: "visual_structure",
     validGrade: 100,
@@ -82,6 +90,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia de Instrumentación Didáctica",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_INSTRUMENTACION_DIDACTICA",
     promptType: "visual_structure",
     validGrade: 100,
@@ -90,6 +99,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia de Socializar la Instrumentación Didáctica",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_SOCIALIZAR_INSTRUMENTACION_DIDACTICA",
     promptType: "visual_structure",
     validGrade: 100,
@@ -98,6 +108,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evaluación diagnóstica",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_EVALUACION_DIAGNOSTICA",
     promptType: "visual_structure",
     validGrade: 100,
@@ -106,6 +117,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia pase de lista primer parcial",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_PASE_LISTA_PRIMER_PARCIAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -114,6 +126,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia de Primer Parcial",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_PRIMER_PARCIAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -122,6 +135,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia pase de lista segundo parcial",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_PASE_LISTA_SEGUNDO_PARCIAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -130,6 +144,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia del Segundo Parcial",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_SEGUNDO_PARCIAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -138,6 +153,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia pase de lista tercer parcial",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_PASE_LISTA_TERCER_PARCIAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -146,6 +162,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia del Tercer Parcial",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_TERCER_PARCIAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -154,6 +171,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia pase de lista cuarto parcial",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_PASE_LISTA_CUARTO_PARCIAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -162,6 +180,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evidencia del Cuarto parcial",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_CUARTO_PARCIAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -170,6 +189,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evaluación Departamental",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_EVALUACION_DEPARTAMENTAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -178,6 +198,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Evaluación Docente",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_EVALUACION_DOCENTE",
     promptType: "visual_structure",
     validGrade: 100,
@@ -186,6 +207,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "Reporte Final",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_REPORTE_FINAL",
     promptType: "visual_structure",
     validGrade: 100,
@@ -194,6 +216,7 @@ const TASK_RULES = [
   {
     enabled: false,
     title: "ACTAS FINALES de calificaciones",
+    reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_ACTAS_FINALES",
     promptType: "visual_structure",
     validGrade: 100,
@@ -235,7 +258,7 @@ const COURSE_WORK_CREATION_CONFIGS = [
  *
  * Uso recomendado:
  * 1. Ajusta los datos de course.
- * 2. Agrega correos de profesores en teachers.
+ * 2. Marca selected: true en los profesores que participaran como alumnos.
  * 3. Ajusta topics y courseWork.
  * 4. Ejecuta createNewCourseFromTemplate para crear todo.
  * 5. Copia el courseId creado en existingCourseId para continuar ajustes sin crear otro curso.
@@ -252,9 +275,35 @@ const COURSE_SETUP_TEMPLATE = {
     ownerId: "me",
     courseState: "ACTIVE"
   },
-  teachers: [
-    "erik.lopez@itcelaya.edu.mx",
-    "d2403041@itcelaya.edu.mx"
+  // Checklist: cambia selected a true solo para quienes aplican a la plantilla.
+  students: [
+    { selected: false, name: "ACEVES SABORIO SALVADOR MARTÍN", email: "salvador.aceves@itcelaya.edu.mx" },
+    { selected: false, name: "AGUILAR NÁJERA CARLOS RAFAEL", email: "rafael.aguilar@itcelaya.edu.mx" },
+    { selected: false, name: "AGUILERA CAMACHO LUIS DANIEL", email: "daniel.aguilera@itcelaya.edu.mx" },
+    { selected: false, name: "ALCARAZ CARACHEO LUIS ALEJANDRO", email: "alejandro.alcaraz@itcelaya.edu.mx" },
+    { selected: false, name: "AMEZCUA ALVAREZ CARLOS MANUEL", email: "carlos.amezcua@itcelaya.edu.mx" },
+    { selected: false, name: "ARROYO RAMÍREZ BENJAMÍN", email: "benjamin.arroyo@itcelaya.edu.mx" },
+    { selected: false, name: "CAMARILLO GÓMEZ KARLA ANHEL", email: "karla.camarillo@itcelaya.edu.mx" },
+    { selected: false, name: "COORDINADOR MECÁNICA", email: "coordmec@itcelaya.edu.mx" },
+    { selected: false, name: "GALLARDO ALVARADO JAIME", email: "jaime.gallardo@itcelaya.edu.mx" },
+    { selected: false, name: "GARCÍA MIRANDA J. SANTOS", email: "santos.garcia@itcelaya.edu.mx" },
+    { selected: false, name: "GUERRERO NAVARRETE ÁNGEL", email: "angel.guerrero@itcelaya.edu.mx" },
+    { selected: false, name: "JAIRO SORIA", email: "jesoriap@gmail.com" },
+    { selected: false, name: "LÓPEZ VARGAS ERIK", email: "erik.lopez@itcelaya.edu.mx" },
+    { selected: false, name: "MAEDA SÁNCHEZ ARNOLDO", email: "arnoldo.maeda@itcelaya.edu.mx" },
+    { selected: false, name: "MORENO BELLO KARLA JUDITH", email: "karla.moreno@itcelaya.edu.mx" },
+    { selected: false, name: "OROZCO MENDOZA HORACIO", email: "horacio.orozco@itcelaya.edu.mx" },
+    { selected: false, name: "PÉREZ GONZÁLEZ LUCIANO", email: "luciano.perez@itcelaya.edu.mx" },
+    { selected: false, name: "POSADA VILLARREAL HUGO ALFREDO", email: "hugo.posada@itcelaya.edu.mx" },
+    { selected: false, name: "RODRÍGUEZ CASTRO RAMÓN", email: "ramon.rodriguez@itcelaya.edu.mx" },
+    { selected: false, name: "RUÍZ MONDRAGÓN GILBERTO", email: "gilberto.ruiz@itcelaya.edu.mx" },
+    { selected: false, name: "SÁNCHEZ RODRÍGUEZ ÁLVARO", email: "alvaro.sanchez@itcelaya.edu.mx" },
+    { selected: false, name: "SILVA GARCÍA MIGUEL ANGEL", email: "masgtic@gmail.com" },
+    { selected: false, name: "SOTO LÓPEZ HUMBERTO", email: "humberto.soto@itcelaya.edu.mx" },
+    { selected: false, name: "TINOCO VILLAGÓMEZ ANTONIO", email: "antonio.tinoco@itcelaya.edu.mx" },
+    { selected: false, name: "TORRES VERA ESTEBAN FRANCISCO", email: "esteban.torres@itcelaya.edu.mx" },
+    { selected: false, name: "ULISES", email: "m2203067@itcelaya.edu.mx" },
+    { selected: false, name: "ZAVALA BUSTOS JOSÉ ALBERTO", email: "jose.zavala@itcelaya.edu.mx" },
   ],
   teacherInvitationReminder: {
     enabled: true,

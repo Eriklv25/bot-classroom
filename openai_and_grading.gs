@@ -43,13 +43,14 @@ function getOpenAiApiKey() {
 function buildEvaluationPrompt(taskConfig) {
   const validGrade = taskConfig.validGrade || CONFIG.VALID_GRADE;
   const invalidGrade = taskConfig.invalidGrade || CONFIG.INVALID_GRADE;
+  const hasExample = Boolean(taskConfig.exampleFileId);
 
   return [
-    "Se adjuntan 2 documentos PDF.",
+    hasExample ? "Se adjuntan 2 documentos PDF." : "Se adjunta 1 documento PDF como evidencia.",
     "El primer archivo corresponde a la evidencia entregada por el estudiante.",
-    "El segundo archivo corresponde al documento ejemplo.",
-    "Evalua si la evidencia corresponde al mismo tipo general de documento que el ejemplo.",
-    "Compara principalmente apariencia visual, formato general, encabezados, presencia de tablas, organizacion por secciones y estructura global.",
+    hasExample ? "El segundo archivo corresponde al documento ejemplo." : "No hay documento de referencia; evalua la evidencia por si misma.",
+    hasExample ? "Evalua si la evidencia corresponde al mismo tipo general de documento que el ejemplo." : "Evalua si el documento es una evidencia legible, no vacia y coherente con la tarea titulada: " + taskConfig.name + ".",
+    hasExample ? "Compara principalmente apariencia visual, formato general, encabezados, presencia de tablas, organizacion por secciones y estructura global." : "Revisa legibilidad, estructura general y que permita reconocer una evidencia relacionada con la tarea.",
     "No evalues contenido academico ni exactitud de datos.",
     "No rechaces por diferencias en nombres, fechas, alumnos, grupos, materias, calificaciones, folios, horas, valores numericos o texto interno de tablas.",
     "Acepta la evidencia si parece usar el mismo formato general aunque los datos internos sean diferentes.",
@@ -69,27 +70,29 @@ function buildEvaluationPrompt(taskConfig) {
  * Se usa: en evaluateEvidenceWithOpenAI.
  */
 function buildOpenAiResponsesPayload(evidenceBlob, exampleBlob, prompt, taskConfig) {
+  const content = [
+    { type: "input_text", text: prompt },
+    {
+      type: "input_file",
+      filename: evidenceBlob.getName() || "evidencia.pdf",
+      file_data: "data:application/pdf;base64," + Utilities.base64Encode(evidenceBlob.getBytes())
+    }
+  ];
+
+  if (exampleBlob) {
+    content.push({
+      type: "input_file",
+      filename: exampleBlob.getName() || "documento_ejemplo.pdf",
+      file_data: "data:application/pdf;base64," + Utilities.base64Encode(exampleBlob.getBytes())
+    });
+  }
+
   return {
     model: CONFIG.OPENAI_MODEL,
     input: [
       {
         role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: prompt
-          },
-          {
-            type: "input_file",
-            filename: evidenceBlob.getName() || "evidencia.pdf",
-            file_data: "data:application/pdf;base64," + Utilities.base64Encode(evidenceBlob.getBytes())
-          },
-          {
-            type: "input_file",
-            filename: exampleBlob.getName() || "documento_ejemplo.pdf",
-            file_data: "data:application/pdf;base64," + Utilities.base64Encode(exampleBlob.getBytes())
-          }
-        ]
+        content: content
       }
     ],
     text: {
@@ -269,6 +272,16 @@ function createSkippedOpenAiEvaluation(taskConfig) {
   };
 }
 
+/** Crea la evaluacion aprobatoria cuando basta comprobar que existe un PDF. */
+function createDocumentOnlyEvaluation(taskConfig) {
+  return {
+    valida: true,
+    motivo: "Documento PDF cargado; esta tarea no requiere revision mediante IA.",
+    diferencias: [],
+    calificacion: taskConfig.validGrade || CONFIG.VALID_GRADE
+  };
+}
+
 
 /**
  * Decide la calificacion final a partir de la evaluacion de OpenAI.
@@ -296,4 +309,3 @@ function decideGradeFromEvaluation(evaluation, taskConfig) {
     reason: evaluation.motivo
   };
 }
-
