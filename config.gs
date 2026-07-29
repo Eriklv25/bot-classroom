@@ -45,7 +45,8 @@ const CONFIG = {
  * Configuracion del proyecto > Propiedades de secuencia de comandos.
  */
 const PROPERTY_KEYS = {
-  OPENAI_API_KEY: "OPENAI_API_KEY"
+  OPENAI_API_KEY: "OPENAI_API_KEY",
+  CONFIG_SPREADSHEET_ID: "CONFIG_SPREADSHEET_ID"
 };
 
 /** Modos disponibles para el switch de revision de cada tarea. */

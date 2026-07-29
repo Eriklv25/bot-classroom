@@ -49,6 +49,35 @@ del archivo de credenciales actualizado. Nunca confirmes ese archivo en Git.
 - Activa `DRY_RUN` para la primera prueba y revisa los registros antes de
   permitir que el bot escriba calificaciones.
 
+## Interfaz de configuración en Google Sheets
+
+Ya no es necesario editar los arreglos de `config.gs` para el uso cotidiano:
+
+1. Despliega esta version y, en el editor de Apps Script, selecciona la funcion
+   `crearHojaDeConfiguracion` en la lista superior y pulsa **Ejecutar**. Acepta
+   los permisos de Google la primera vez.
+2. La hoja se crea en **Google Drive > Mi unidad** con el nombre
+   **Configuracion - Bot Classroom**. Al terminar la ejecucion, copia la URL
+   mostrada en **Registro de ejecucion** y abre esa direccion. Si cerraste el
+   registro, ejecuta `verEnlaceHojaDeConfiguracion` para volver a mostrarla.
+   Ejecutar nuevamente `crearHojaDeConfiguracion` tambien devuelve la hoja ya
+   existente y no crea duplicados.
+3. La primera pestaña, **INICIO**, vuelve a explicar la mecanica dentro del
+   propio archivo. Configura las pestañas **General**,
+   **Cursos**, **Reglas de tareas**, **Crear tareas**, **Plantilla del curso**,
+   **Participantes**, **Temas** y **Tareas de plantilla**.
+4. Usa las casillas para activar opciones y filas. En fechas escribe
+   `AAAA-MM-DD`; en horas, `HH:MM`; y no cambies los encabezados.
+5. No hay boton **Guardar**: Google Sheets guarda los cambios automaticamente.
+   Ejecuta normalmente el bot o las funciones de creacion. La configuracion se
+   lee de la hoja al inicio de cada operacion, por lo que no hay que volver a
+   desplegar al cambiar valores.
+
+La clave `OPENAI_API_KEY` sigue exclusivamente en Script Properties y nunca se
+copia a Sheets. `resetConfigurationSpreadsheetFromCode` restaura todas las
+pestañas desde los valores predeterminados del codigo y **sobrescribe los datos
+de la hoja**, por lo que debe usarse con precaucion.
+
 ## Preparacion de un curso desde la plantilla
 
 - `COURSE_SETUP_TEMPLATE` incluye los temas `INICIO DEL CURSO`, `CURSO` y
