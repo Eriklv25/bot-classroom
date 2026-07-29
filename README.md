@@ -44,6 +44,16 @@ del archivo de credenciales actualizado. Nunca confirmes ese archivo en Git.
 
 - Guarda `OPENAI_API_KEY` en las propiedades de secuencia de comandos de Apps
   Script; nunca en `config.gs` ni en secretos utilizados por el workflow.
-- Revisa `ADMIN_EMAIL`, `TASK_CONFIGS` y `COURSE_SETUP_TEMPLATE` en `config.gs`.
+- Revisa `ADMIN_EMAIL`, `COURSE_CONFIGS`, `TASK_RULES` y
+  `COURSE_SETUP_TEMPLATE` en `config.gs`.
 - Activa `DRY_RUN` para la primera prueba y revisa los registros antes de
   permitir que el bot escriba calificaciones.
+
+## Descubrimiento automatico de tareas
+
+- Agrega cada curso que deba revisarse en `COURSE_CONFIGS`.
+- Agrega una entrada en `TASK_RULES` con el titulo exacto de cada tarea y
+  relacionala con el PDF de ejemplo y las calificaciones correspondientes.
+- La comparacion ignora mayusculas y espacios al inicio o al final.
+- Una tarea no publicada, que no sea una asignacion o cuyo titulo no coincida
+  con una regla se omite de forma segura.

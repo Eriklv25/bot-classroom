@@ -39,22 +39,85 @@ function validateGlobalConfiguration() {
     throw new Error("CONFIG.MAX_EVIDENCES_PER_RUN debe ser un numero mayor o igual a 1.");
   }
 
-  if (!Array.isArray(TASK_CONFIGS)) {
-    throw new Error("TASK_CONFIGS debe ser un arreglo.");
+  if (!Array.isArray(COURSE_CONFIGS) || !Array.isArray(TASK_RULES)) {
+    throw new Error("COURSE_CONFIGS y TASK_RULES deben ser arreglos.");
   }
 
-  getActiveTaskConfigs().forEach(function (taskConfig) {
-    if (!taskConfig.courseId || !taskConfig.courseWorkId || !taskConfig.exampleFileId) {
-      throw new Error("La tarea " + getTaskLabel(taskConfig) + " no tiene todos los IDs requeridos.");
+  COURSE_CONFIGS.filter(function (courseConfig) {
+    return courseConfig && courseConfig.enabled === true;
+  }).forEach(function (courseConfig) {
+    if (!courseConfig.courseId) {
+      throw new Error("Un curso activo no tiene courseId.");
     }
+  });
+
+  const configuredTitles = {};
+  TASK_RULES.filter(function (rule) {
+    return rule && rule.enabled === true;
+  }).forEach(function (rule) {
+    if (!rule.title || !rule.exampleFileId) {
+      throw new Error("Cada regla activa debe tener title y exampleFileId.");
+    }
+
+    const normalizedTitle = normalizeTaskTitle(rule.title);
+    if (configuredTitles[normalizedTitle]) {
+      throw new Error("Hay mas de una regla activa para la tarea: " + rule.title);
+    }
+    configuredTitles[normalizedTitle] = true;
   });
 }
 
-/** Devuelve solamente las tareas habilitadas. */
+/** Descubre las tareas publicadas cuyo titulo coincide con una regla. */
 function getActiveTaskConfigs() {
-  return TASK_CONFIGS.filter(function (taskConfig) {
-    return taskConfig && taskConfig.enabled === true;
+  const taskConfigs = [];
+  const activeRules = TASK_RULES.filter(function (rule) {
+    return rule && rule.enabled === true;
   });
+
+  COURSE_CONFIGS.filter(function (courseConfig) {
+    return courseConfig && courseConfig.enabled === true;
+  }).forEach(function (courseConfig) {
+    listCourseWorkForSetup(courseConfig.courseId).forEach(function (courseWork) {
+      if (courseWork.state !== "PUBLISHED" || courseWork.workType !== "ASSIGNMENT") {
+        return;
+      }
+
+      const rule = findTaskRuleForTitle(courseWork.title, activeRules);
+      if (!rule) {
+        return;
+      }
+
+      taskConfigs.push({
+        enabled: true,
+        name: courseWork.title,
+        courseId: courseConfig.courseId,
+        courseWorkId: courseWork.id,
+        exampleFileId: rule.exampleFileId,
+        promptType: rule.promptType || "visual_structure",
+        validGrade: rule.validGrade || CONFIG.VALID_GRADE,
+        invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
+        sendStudentNotifications: courseConfig.sendStudentNotifications === true
+      });
+    });
+  });
+
+  return taskConfigs;
+}
+
+/** Busca la regla cuyo titulo coincide sin distinguir mayusculas ni espacios. */
+function findTaskRuleForTitle(title, rules) {
+  const normalizedTitle = normalizeTaskTitle(title);
+  for (let index = 0; index < rules.length; index++) {
+    if (normalizedTitle === normalizeTaskTitle(rules[index].title)) {
+      return rules[index];
+    }
+  }
+  return null;
+}
+
+/** Normaliza titulos para compararlos de forma exacta y estable. */
+function normalizeTaskTitle(title) {
+  return String(title || "").trim().toLowerCase();
 }
 
 /** Genera una etiqueta legible para logs y errores. */
