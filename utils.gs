@@ -106,7 +106,7 @@ function getActiveTaskConfigs() {
         courseWorkId: courseWork.id,
         exampleFileId: rule.exampleFileId,
         reviewMode: rule.reviewMode || REVIEW_MODES.AI,
-        promptType: rule.promptType || "visual_structure",
+        prompt: rule.prompt || "",
         validGrade: rule.validGrade || CONFIG.VALID_GRADE,
         invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
         sendStudentNotifications: courseConfig.sendStudentNotifications === true

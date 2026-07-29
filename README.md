@@ -49,7 +49,7 @@ del archivo de credenciales actualizado. Nunca confirmes ese archivo en Git.
 - Activa `DRY_RUN` para la primera prueba y revisa los registros antes de
   permitir que el bot escriba calificaciones.
 
-## Una sola función y una sola hoja por curso
+## Una sola función y tres pestañas por curso
 
 El flujo cotidiano se realiza desde una única hoja; no hace falta volver al
 selector de funciones de Apps Script después de crearla:
@@ -57,27 +57,31 @@ selector de funciones de Apps Script después de crearla:
 1. En Apps Script ejecuta una sola vez **`crearHojaDeCurso`** y concede los
    permisos solicitados. La función crea **Configuracion - Bot Classroom** en Mi
    unidad (o devuelve la hoja existente) y deja su URL en el registro.
-2. Configura el curso en **Plantilla del curso** y completa **Participantes**,
-   **Temas** y **Tareas de plantilla**. Las pestañas **General**, **Cursos**,
-   **Reglas de tareas** y **Crear tareas** contienen las opciones posteriores
-   del bot.
-3. Vuelve a **INICIO** y marca la casilla verde **EJECUTAR**. La primera
+2. Configura los datos generales en **Plantilla de curso**, selecciona las
+   personas en **Participantes** y administra toda la configuración de cada
+   actividad en **Tareas**. No existen otras pestañas de configuración.
+3. En **Plantilla de curso** marca la casilla verde **EJECUTAR**. La primera
    ejecución crea el curso, sus temas, tareas e invitaciones. El ID generado se
    escribe automáticamente en la misma hoja para impedir cursos duplicados.
 4. Para modificar el curso, edita esa misma hoja y vuelve a marcar
    **EJECUTAR**. Se actualizan los datos generales del curso y las tareas que ya
    coincidan por título; también se crean los temas, tareas e invitaciones
    nuevas. El estado, la fecha y el resultado de cada ejecución aparecen en
-   **INICIO**.
+   **Plantilla de curso**.
+
+En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
+ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
+estado y fecha. Para añadir una actividad, completa una fila vacía y marca
+**crearAhora**; el bot crea o actualiza el curso y devuelve la casilla a su
+estado desmarcado.
 
 Google Sheets guarda cada edición automáticamente. No cambies nombres de
-pestañas, encabezados ni los nombres de campo de la primera columna. Usa
+pestañas, encabezados ni los nombres de campo. Usa
 `AAAA-MM-DD` para fechas y `HH:MM` para horas. Por seguridad, el flujo no elimina
 automáticamente participantes, temas ni tareas que quites de la hoja.
 
 La clave `OPENAI_API_KEY` sigue exclusivamente en Script Properties y nunca se
-copia a Sheets. La compatibilidad con las funciones anteriores se conserva,
-pero ya no son necesarias para este flujo.
+copia a Sheets.
 
 ## Preparacion de un curso desde la plantilla
 
