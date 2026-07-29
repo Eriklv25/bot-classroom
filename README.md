@@ -55,19 +55,21 @@ del archivo de credenciales actualizado. Nunca confirmes ese archivo en Git.
   `FINAL DEL CURSO`, junto con las tareas base de cada etapa.
 - Ejecuta `createNewCourseFromTemplate` para crear un curso nuevo con todos sus
   temas y tareas.
-- Para agregar una sola tarea a un curso existente, copia su ID en
-  `COURSE_SETUP_TEMPLATE.existingCourseId`, escribe el titulo deseado en
-  `selectedCourseWorkTitle` y ejecuta `createSelectedCourseWorkFromTemplate`.
-- Tambien puedes llamar desde codigo a
-  `createCourseWorkFromTemplateByTitle("Titulo exacto")`. La funcion reutiliza
-  el tema correspondiente y omite la tarea si ya existe y
-  `skipExistingCourseWork` esta activo.
+- La creacion individual es independiente de la plantilla del curso: configura
+  una entrada en `COURSE_WORK_CREATION_CONFIGS`, activala y ejecuta
+  `createConfiguredCourseWorkItems`. Puedes indicar `topicId` si la tarea debe
+  quedar asociada a un tema existente.
 
 ## Descubrimiento automatico de tareas
 
 - Agrega cada curso que deba revisarse en `COURSE_CONFIGS`.
 - Agrega una entrada en `TASK_RULES` con el titulo exacto de cada tarea y
   relacionala con el PDF de ejemplo y las calificaciones correspondientes.
+- La plantilla ya incluye una regla desactivada por cada tarea de
+  `COURSE_SETUP_TEMPLATE`. Sustituye su valor `ID_PDF_*` por el ID real del
+  documento de Drive y cambia `enabled` a `true`; las reglas permanecen
+  desactivadas mientras conserven IDs de ejemplo para evitar revisiones
+  accidentales.
 - La comparacion ignora mayusculas y espacios al inicio o al final.
 - Una tarea no publicada, que no sea una asignacion o cuyo titulo no coincida
   con una regla se omite de forma segura.

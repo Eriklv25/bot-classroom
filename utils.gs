@@ -59,6 +59,10 @@ function validateGlobalConfiguration() {
       throw new Error("Cada regla activa debe tener title y exampleFileId.");
     }
 
+    if (/^ID_PDF_/.test(rule.exampleFileId)) {
+      throw new Error("Reemplaza el ID de ejemplo antes de activar la regla: " + rule.title);
+    }
+
     const normalizedTitle = normalizeTaskTitle(rule.title);
     if (configuredTitles[normalizedTitle]) {
       throw new Error("Hay mas de una regla activa para la tarea: " + rule.title);
