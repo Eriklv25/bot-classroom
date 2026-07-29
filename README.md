@@ -78,6 +78,22 @@ copia a Sheets. `resetConfigurationSpreadsheetFromCode` restaura todas las
 pestañas desde los valores predeterminados del codigo y **sobrescribe los datos
 de la hoja**, por lo que debe usarse con precaucion.
 
+### Una hoja independiente por curso
+
+- `createNewCourseFromTemplate` crea y registra automaticamente una hoja
+  **Configuracion - Nombre del curso**. Las reglas de esa hoja quedan ligadas a
+  su `courseId`, por lo que no cambian el comportamiento de otros cursos.
+- Para un curso que ya existe, ejecuta
+  `crearHojaDeConfiguracionParaCurso(courseId, courseName)`. Si ya esta
+  registrado, devuelve la hoja existente en lugar de crear un duplicado.
+- Para elegir la ubicacion, ejecuta primero
+  `configurarCarpetaDeHojas(folderIdOrUrl)` con el ID o la URL de una carpeta de
+  Drive. `configurarCarpetaDeHojas("")` hace que las hojas nuevas vuelvan a
+  guardarse en **Mi unidad**.
+- Durante la revision por lotes, el bot lee todas las hojas por curso
+  registradas. La hoja general anterior sigue funcionando mientras no existan
+  hojas por curso.
+
 ## Preparacion de un curso desde la plantilla
 
 - `COURSE_SETUP_TEMPLATE` incluye los temas `INICIO DEL CURSO`, `CURSO` y

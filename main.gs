@@ -6,7 +6,7 @@
  * Se usa: como funcion principal programada cada hora.
  */
 function processPendingSubmissionsBatch() {
-  loadConfigurationFromSpreadsheet();
+  loadConfigurationFromSpreadsheet(true);
   const startedAt = new Date();
   const timer = createExecutionTimer(startedAt);
   const lock = LockService.getScriptLock();

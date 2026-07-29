@@ -40,6 +40,7 @@ function createConfigurationSpreadsheet() {
   firstSheet.setName(CONFIG_SHEET_NAMES.HOME);
 
   writeConfigurationSpreadsheet_(spreadsheet);
+  moveSpreadsheetToConfiguredFolder_(spreadsheet);
   PropertiesService.getScriptProperties().setProperty(
     PROPERTY_KEYS.CONFIG_SPREADSHEET_ID,
     spreadsheet.getId()
@@ -52,6 +53,51 @@ function createConfigurationSpreadsheet() {
 /** Alias en español visible en el selector de funciones de Apps Script. */
 function crearHojaDeConfiguracion() {
   return createConfigurationSpreadsheet();
+}
+
+/** Define la carpeta de Drive para las hojas que se creen despues. */
+function configurarCarpetaDeHojas(folderIdOrUrl) {
+  const properties = PropertiesService.getScriptProperties();
+  const folderId = extractDriveId_(folderIdOrUrl);
+  if (!folderId) {
+    properties.deleteProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID);
+    console.log("Las hojas nuevas se guardaran en Mi unidad.");
+    return "";
+  }
+  const folder = DriveApp.getFolderById(folderId);
+  properties.setProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID, folder.getId());
+  console.log("Las hojas nuevas se guardaran en: " + folder.getName());
+  return folder.getUrl();
+}
+
+/** Crea y registra una hoja aislada para un curso existente. */
+function crearHojaDeConfiguracionParaCurso(courseId, courseName, folderIdOrUrl) {
+  if (!courseId) throw new Error("Indica el courseId del curso.");
+  const registry = getCourseSpreadsheetRegistry_();
+  if (registry[courseId]) {
+    const existing = SpreadsheetApp.openById(registry[courseId]);
+    logConfigurationSpreadsheetLink_(existing, "Hoja existente del curso");
+    return existing.getUrl();
+  }
+
+  const spreadsheet = SpreadsheetApp.create("Configuracion - " + (courseName || ("Curso " + courseId)));
+  spreadsheet.getSheets()[0].setName(CONFIG_SHEET_NAMES.HOME);
+  const previousCourses = COURSE_CONFIGS.slice();
+  const previousExistingCourseId = COURSE_SETUP_TEMPLATE.existingCourseId;
+  try {
+    replaceArray_(COURSE_CONFIGS, [{ enabled: true, courseId: String(courseId), sendStudentNotifications: false }]);
+    COURSE_SETUP_TEMPLATE.existingCourseId = String(courseId);
+    writeConfigurationSpreadsheet_(spreadsheet);
+  } finally {
+    replaceArray_(COURSE_CONFIGS, previousCourses);
+    COURSE_SETUP_TEMPLATE.existingCourseId = previousExistingCourseId;
+  }
+
+  moveSpreadsheetToConfiguredFolder_(spreadsheet, folderIdOrUrl);
+  registry[String(courseId)] = spreadsheet.getId();
+  saveCourseSpreadsheetRegistry_(registry);
+  logConfigurationSpreadsheetLink_(spreadsheet, "Hoja independiente creada para el curso");
+  return spreadsheet.getUrl();
 }
 
 /** Sobrescribe la hoja configurada con los valores que actualmente tiene el codigo. */
@@ -74,7 +120,34 @@ function verEnlaceHojaDeConfiguracion() {
 }
 
 /** Carga y valida todas las secciones editables de la hoja. */
-function loadConfigurationFromSpreadsheet() {
+function loadConfigurationFromSpreadsheet(loadAllCourseSpreadsheets) {
+  const registry = getCourseSpreadsheetRegistry_();
+  const courseIds = Object.keys(registry);
+  if (loadAllCourseSpreadsheets === true && courseIds.length) {
+    const allCourses = [];
+    const allRules = [];
+    const allCreationRows = [];
+    courseIds.forEach(function (courseId) {
+      const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
+      readTable_(spreadsheet, CONFIG_SHEET_NAMES.COURSES).forEach(function (course) {
+        course.courseId = String(courseId);
+        allCourses.push(course);
+      });
+      readTable_(spreadsheet, CONFIG_SHEET_NAMES.TASK_RULES).forEach(function (rule) {
+        rule.courseId = String(courseId);
+        allRules.push(rule);
+      });
+      readCreationRows_(spreadsheet).forEach(function (row) {
+        row.courseId = String(courseId);
+        allCreationRows.push(row);
+      });
+    });
+    replaceArray_(COURSE_CONFIGS, allCourses);
+    replaceArray_(TASK_RULES, allRules);
+    replaceArray_(COURSE_WORK_CREATION_CONFIGS, allCreationRows);
+    return true;
+  }
+
   const propertyValue = PropertiesService.getScriptProperties().getProperty(
     PROPERTY_KEYS.CONFIG_SPREADSHEET_ID
   );
@@ -89,6 +162,38 @@ function loadConfigurationFromSpreadsheet() {
   replaceArray_(COURSE_WORK_CREATION_CONFIGS, readCreationRows_(spreadsheet));
   applyCourseTemplate_(spreadsheet);
   return true;
+}
+
+function getCourseSpreadsheetRegistry_() {
+  const value = PropertiesService.getScriptProperties().getProperty(PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS);
+  if (!value) return {};
+  try {
+    return JSON.parse(value) || {};
+  } catch (error) {
+    throw new Error("COURSE_CONFIG_SPREADSHEETS no contiene JSON valido.");
+  }
+}
+
+function saveCourseSpreadsheetRegistry_(registry) {
+  PropertiesService.getScriptProperties().setProperty(
+    PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS,
+    JSON.stringify(registry)
+  );
+}
+
+function extractDriveId_(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const match = text.match(/[-\w]{20,}/);
+  if (!match) throw new Error("No se encontro un ID de carpeta valido.");
+  return match[0];
+}
+
+function moveSpreadsheetToConfiguredFolder_(spreadsheet, folderIdOrUrl) {
+  const folderId = extractDriveId_(folderIdOrUrl) ||
+    PropertiesService.getScriptProperties().getProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID);
+  if (!folderId) return;
+  DriveApp.getFileById(spreadsheet.getId()).moveTo(DriveApp.getFolderById(folderId));
 }
 
 function writeConfigurationSpreadsheet_(spreadsheet) {

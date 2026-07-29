@@ -265,6 +265,7 @@ function createNewCourseFromTemplate() {
 
   const setupSummary = createCourseSetupFromTemplate(setupTemplate);
   const invitationSummary = inviteStudentsFromTemplate(course.id, template.students || []);
+  const configurationSpreadsheetUrl = crearHojaDeConfiguracionParaCurso(course.id, course.name);
 
   const summary = {
     course: {
@@ -274,7 +275,8 @@ function createNewCourseFromTemplate() {
       alternateLink: course.alternateLink || ""
     },
     setup: setupSummary,
-    studentInvitations: invitationSummary
+    studentInvitations: invitationSummary,
+    configurationSpreadsheetUrl: configurationSpreadsheetUrl
   };
 
   console.log("Resumen de curso nuevo desde plantilla: " + JSON.stringify(summary));
