@@ -244,6 +244,26 @@ function createClassroomCourseFromConfig(courseConfig) {
   return created;
 }
 
+/** Actualiza los campos editables de un curso ya creado desde la misma hoja. */
+function updateClassroomCourseFromConfig(courseId, courseConfig) {
+  if (!courseId || !courseConfig || !courseConfig.name) {
+    throw new Error("Faltan courseId o nombre para actualizar el curso.");
+  }
+  const resource = {
+    name: courseConfig.name,
+    section: courseConfig.section || "",
+    descriptionHeading: courseConfig.descriptionHeading || "",
+    description: courseConfig.description || "",
+    room: courseConfig.room || "",
+    courseState: courseConfig.courseState || "ACTIVE"
+  };
+  const updated = Classroom.Courses.patch(resource, courseId, {
+    updateMask: "name,section,descriptionHeading,description,room,courseState"
+  });
+  console.log("Curso actualizado: " + updated.name + " / courseId=" + courseId);
+  return updated;
+}
+
 /**
  * Crea un curso nuevo, temas, tareas e invitaciones desde COURSE_SETUP_TEMPLATE.
  *
@@ -373,6 +393,7 @@ function createCourseSetupFromTemplate(template) {
     topicsCreated: [],
     topicsExisting: [],
     courseWorkCreated: [],
+    courseWorkUpdated: [],
     courseWorkSkipped: []
   };
 
@@ -400,11 +421,17 @@ function createCourseSetupFromTemplate(template) {
 
     const existing = courseWorkMap[normalizeSetupName(workConfig.title)];
     if (template.skipExistingCourseWork !== false && existing) {
-      summary.courseWorkSkipped.push({
+      const topicId = getOrCreateTopicIdByName(courseId, workConfig.topicName, topicMap);
+      const updated = updateCourseWorkFromConfig(courseId, existing.id, {
         title: workConfig.title,
-        courseWorkId: existing.id,
-        reason: "Ya existe una tarea con ese titulo."
+        description: workConfig.description || "",
+        maxPoints: workConfig.maxPoints || template.defaultMaxPoints || CONFIG.VALID_GRADE,
+        state: workConfig.state || template.defaultState || "DRAFT",
+        dueDate: workConfig.dueDate || null,
+        dueTime: workConfig.dueTime || null,
+        topicId: topicId || null
       });
+      summary.courseWorkUpdated.push({ title: updated.title, courseWorkId: updated.id });
       return;
     }
 
@@ -436,6 +463,32 @@ function createCourseSetupFromTemplate(template) {
 
   console.log("Resumen de inicializacion de curso: " + JSON.stringify(summary));
   return summary;
+}
+
+/** Actualiza una tarea existente conservando su ID de Classroom. */
+function updateCourseWorkFromConfig(courseId, courseWorkId, config) {
+  const resource = {
+    title: config.title,
+    description: config.description || "",
+    maxPoints: Number(config.maxPoints || CONFIG.VALID_GRADE),
+    state: config.state || "DRAFT"
+  };
+  const updateFields = ["title", "description", "maxPoints", "state"];
+  if (config.topicId) {
+    resource.topicId = String(config.topicId);
+    updateFields.push("topicId");
+  }
+  if (config.dueDate) {
+    resource.dueDate = config.dueDate;
+    updateFields.push("dueDate");
+    if (config.dueTime) {
+      resource.dueTime = config.dueTime;
+      updateFields.push("dueTime");
+    }
+  }
+  return Classroom.Courses.CourseWork.patch(resource, courseId, courseWorkId, {
+    updateMask: updateFields.join(",")
+  });
 }
 
 /**
