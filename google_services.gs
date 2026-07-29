@@ -252,6 +252,7 @@ function createClassroomCourseFromConfig(courseConfig) {
  * Se usa: como boton principal para un semestre nuevo.
  */
 function createNewCourseFromTemplate() {
+  loadConfigurationFromSpreadsheet();
   const template = COURSE_SETUP_TEMPLATE;
   if (template.createNewCourse !== true) {
     throw new Error("COURSE_SETUP_TEMPLATE.createNewCourse debe ser true para crear un curso nuevo.");
@@ -322,6 +323,7 @@ function inviteStudentsFromTemplate(courseId, students) {
 
 /** Invita el checklist seleccionado a un curso ya configurado en la plantilla. */
 function inviteSelectedStudentsFromTemplate() {
+  loadConfigurationFromSpreadsheet();
   const courseId = COURSE_SETUP_TEMPLATE.existingCourseId || COURSE_SETUP_TEMPLATE.courseId;
   if (!courseId) {
     throw new Error("Falta COURSE_SETUP_TEMPLATE.existingCourseId.");
@@ -338,6 +340,7 @@ function inviteSelectedStudentsFromTemplate() {
  * Se usa: para continuar ajustes sobre existingCourseId sin crear otro curso.
  */
 function setupCourseFromTemplate() {
+  loadConfigurationFromSpreadsheet();
   const courseId = COURSE_SETUP_TEMPLATE.existingCourseId || COURSE_SETUP_TEMPLATE.courseId;
   if (!courseId) {
     throw new Error("Falta COURSE_SETUP_TEMPLATE.existingCourseId. Si quieres crear un curso nuevo, ejecuta createNewCourseFromTemplate.");
@@ -604,6 +607,7 @@ function getTeacherInvitationStatus(courseId, teacherEmails) {
  * Se usa: manualmente o por trigger para seguimiento de invitaciones.
  */
 function sendTeacherInvitationRemindersFromTemplate() {
+  loadConfigurationFromSpreadsheet();
   const courseId = COURSE_SETUP_TEMPLATE.existingCourseId || COURSE_SETUP_TEMPLATE.courseId;
   if (!courseId) {
     throw new Error("Falta COURSE_SETUP_TEMPLATE.existingCourseId para revisar invitaciones.");
@@ -665,6 +669,7 @@ function normalizeSetupName(value) {
  * Se usa: manualmente cuando quieres que las tareas nazcan desde este proyecto Apps Script.
  */
 function createConfiguredCourseWorkItems() {
+  loadConfigurationFromSpreadsheet();
   const enabledConfigs = COURSE_WORK_CREATION_CONFIGS.filter(function (creationConfig) {
     return creationConfig.enabled === true;
   });
@@ -1693,6 +1698,7 @@ function getLogSheet() {
  * Se usa: una vez, manualmente, despues de configurar el proyecto.
  */
 function createHourlyTrigger() {
+  loadConfigurationFromSpreadsheet();
   deleteClassroomBotTriggers();
 
   ScriptApp.newTrigger("processPendingSubmissionsBatch")
