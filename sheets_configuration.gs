@@ -71,6 +71,7 @@ function ejecutarCambiosDelCurso(event) {
     } else {
       course = updateClassroomCourseFromConfig(courseId, template.course);
     }
+    syncCourseSpreadsheetFile_(spreadsheet, course, readTemplateFields_(spreadsheet).carpetaAlmacenamiento);
     const setup = createCourseSetupFromTemplate(Object.assign({}, template, { courseId: courseId }));
     const invitations = inviteStudentsFromTemplate(courseId, template.students || []);
     registerCourseSpreadsheet_(courseId, spreadsheet);
@@ -116,6 +117,17 @@ function saveCreatedCourseToSpreadsheet_(spreadsheet, course) {
   values.forEach(function (row, index) {
     if (row[0] === "existingCourseId") sheet.getRange(index + 1, 2).setValue(String(course.id));
   });
+  SpreadsheetApp.flush();
+}
+
+/** Identifica el archivo con el curso y lo mueve a la carpeta elegida en la plantilla. */
+function syncCourseSpreadsheetFile_(spreadsheet, course, folderIdOrUrl) {
+  const courseName = String(course && course.name || "").trim();
+  if (!courseName) throw new Error("El curso no tiene un nombre valido para identificar la hoja.");
+  spreadsheet.rename(courseName);
+  if (String(folderIdOrUrl || "").trim()) {
+    moveSpreadsheetToConfiguredFolder_(spreadsheet, folderIdOrUrl);
+  }
 }
 
 function registerCourseSpreadsheet_(courseId, spreadsheet) {
@@ -211,7 +223,8 @@ function writeTemplateSheet_(sheet) {
     ["courseDescription", template.course.description], ["room", template.course.room],
     ["ownerId", template.course.ownerId], ["courseState", template.course.courseState],
     ["skipExistingCourseWork", template.skipExistingCourseWork], ["defaultState", template.defaultState],
-    ["defaultMaxPoints", template.defaultMaxPoints]
+    ["defaultMaxPoints", template.defaultMaxPoints],
+    ["carpetaAlmacenamiento", ""]
   ];
   replaceSheetValues_(sheet, rows);
   sheet.getRange("A1:B1").merge().setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
