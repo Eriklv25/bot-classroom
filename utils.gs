@@ -68,7 +68,7 @@ function validateGlobalConfiguration() {
       throw new Error("Reemplaza el ID de ejemplo antes de activar la regla: " + rule.title);
     }
 
-    const normalizedTitle = normalizeTaskTitle(rule.title);
+    const normalizedTitle = (rule.courseId || "*") + ":" + normalizeTaskTitle(rule.title);
     if (configuredTitles[normalizedTitle]) {
       throw new Error("Hay mas de una regla activa para la tarea: " + rule.title);
     }
@@ -91,7 +91,10 @@ function getActiveTaskConfigs() {
         return;
       }
 
-      const rule = findTaskRuleForTitle(courseWork.title, activeRules);
+      const rulesForCourse = activeRules.filter(function (candidate) {
+        return !candidate.courseId || String(candidate.courseId) === String(courseConfig.courseId);
+      });
+      const rule = findTaskRuleForTitle(courseWork.title, rulesForCourse);
       if (!rule) {
         return;
       }
