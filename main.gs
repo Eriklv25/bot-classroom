@@ -125,14 +125,11 @@ function processOneSubmission(taskConfig, courseWork, submission, summary) {
       throw new Error("La entrega no contiene un archivo PDF accesible.");
     }
 
-    const exampleFile = getPdfBlobFromDriveFileId(taskConfig.exampleFileId, "documento_ejemplo.pdf");
     console.log("Archivo descargado: " + evidenceFile.name);
 
-    const evaluation = shouldCallOpenAiNow()
-      ? evaluateEvidenceWithOpenAI(evidenceFile.blob, exampleFile.blob, taskConfig)
-      : createSkippedOpenAiEvaluation(taskConfig);
+    const evaluation = evaluateSubmissionByConfiguredMode(evidenceFile, taskConfig);
 
-    console.log("Respuesta recibida de OpenAI: " + JSON.stringify(evaluation));
+    console.log("Resultado de revision: " + JSON.stringify(evaluation));
 
     const gradingDecision = decideGradeFromEvaluation(evaluation, taskConfig);
 
@@ -196,3 +193,19 @@ function shouldCallOpenAiNow() {
   return CONFIG.EVALUATE_WITH_OPENAI_IN_DRY_RUN === true;
 }
 
+/** Aplica el switch de revision configurado para la tarea. */
+function evaluateSubmissionByConfiguredMode(evidenceFile, taskConfig) {
+  if (taskConfig.reviewMode === REVIEW_MODES.DOCUMENT_ONLY) {
+    return createDocumentOnlyEvaluation(taskConfig);
+  }
+
+  if (!shouldCallOpenAiNow()) {
+    return createSkippedOpenAiEvaluation(taskConfig);
+  }
+
+  const exampleBlob = taskConfig.exampleFileId
+    ? getPdfBlobFromDriveFileId(taskConfig.exampleFileId, "documento_ejemplo.pdf").blob
+    : null;
+
+  return evaluateEvidenceWithOpenAI(evidenceFile.blob, exampleBlob, taskConfig);
+}

@@ -73,3 +73,27 @@ del archivo de credenciales actualizado. Nunca confirmes ese archivo en Git.
 - La comparacion ignora mayusculas y espacios al inicio o al final.
 - Una tarea no publicada, que no sea una asignacion o cuyo titulo no coincida
   con una regla se omite de forma segura.
+
+## Modos de revision
+
+Cada entrada de `TASK_RULES` funciona como un switch independiente mediante
+`reviewMode`:
+
+- `REVIEW_MODES.DOCUMENT_ONLY`: aprueba cuando la entrega contiene un PDF
+  accesible. No descarga referencia ni llama a OpenAI.
+- `REVIEW_MODES.AI`: analiza el PDF mediante OpenAI. `exampleFileId` puede
+  contener el ID de un PDF de referencia o quedar como cadena vacia para que la
+  IA revise la evidencia sin documento ejemplo.
+
+Para incorporar IA posteriormente basta cambiar `reviewMode` de
+`DOCUMENT_ONLY` a `AI` y, si se desea una comparacion, agregar
+`exampleFileId`.
+
+## Checklist de participantes
+
+Los profesores que cargaran evidencias se inscriben en Classroom con el rol de
+alumno. La lista completa esta en `COURSE_SETUP_TEMPLATE.students`; cambia
+`selected` a `true` solamente en las personas que deban aplicar a esa
+plantilla. Al ejecutar `createNewCourseFromTemplate` se invita solo a las
+personas seleccionadas. Para aplicar el checklist a un curso ya existente,
+configura `existingCourseId` y ejecuta `inviteSelectedStudentsFromTemplate`.

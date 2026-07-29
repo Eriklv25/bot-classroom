@@ -55,11 +55,16 @@ function validateGlobalConfiguration() {
   TASK_RULES.filter(function (rule) {
     return rule && rule.enabled === true;
   }).forEach(function (rule) {
-    if (!rule.title || !rule.exampleFileId) {
-      throw new Error("Cada regla activa debe tener title y exampleFileId.");
+    if (!rule.title) {
+      throw new Error("Cada regla activa debe tener title.");
     }
 
-    if (/^ID_PDF_/.test(rule.exampleFileId)) {
+    const reviewMode = rule.reviewMode || REVIEW_MODES.AI;
+    if (reviewMode !== REVIEW_MODES.DOCUMENT_ONLY && reviewMode !== REVIEW_MODES.AI) {
+      throw new Error("reviewMode invalido para la tarea: " + rule.title);
+    }
+
+    if (reviewMode === REVIEW_MODES.AI && rule.exampleFileId && /^ID_PDF_/.test(rule.exampleFileId)) {
       throw new Error("Reemplaza el ID de ejemplo antes de activar la regla: " + rule.title);
     }
 
@@ -97,6 +102,7 @@ function getActiveTaskConfigs() {
         courseId: courseConfig.courseId,
         courseWorkId: courseWork.id,
         exampleFileId: rule.exampleFileId,
+        reviewMode: rule.reviewMode || REVIEW_MODES.AI,
         promptType: rule.promptType || "visual_structure",
         validGrade: rule.validGrade || CONFIG.VALID_GRADE,
         invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,

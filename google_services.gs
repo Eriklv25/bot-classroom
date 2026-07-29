@@ -263,7 +263,7 @@ function createNewCourseFromTemplate() {
   });
 
   const setupSummary = createCourseSetupFromTemplate(setupTemplate);
-  const invitationSummary = inviteTeachersFromTemplate(course.id, template.teachers || []);
+  const invitationSummary = inviteStudentsFromTemplate(course.id, template.students || []);
 
   const summary = {
     course: {
@@ -273,12 +273,61 @@ function createNewCourseFromTemplate() {
       alternateLink: course.alternateLink || ""
     },
     setup: setupSummary,
-    teacherInvitations: invitationSummary
+    studentInvitations: invitationSummary
   };
 
   console.log("Resumen de curso nuevo desde plantilla: " + JSON.stringify(summary));
   console.log("Copia este courseId en COURSE_SETUP_TEMPLATE.existingCourseId si quieres hacer ajustes sin crear otro curso: " + course.id);
   return summary;
+}
+
+/** Invita como alumnos unicamente a los profesores marcados en el checklist. */
+function inviteStudentsFromTemplate(courseId, students) {
+  if (!courseId) {
+    throw new Error("Falta courseId.");
+  }
+
+  const summary = { courseId: courseId, invited: [], skipped: [], errors: [] };
+  (students || []).forEach(function (student) {
+    if (!student || student.selected !== true) {
+      return;
+    }
+
+    const email = String(student.email || "").trim();
+    if (!email) {
+      summary.errors.push({ name: student.name || "", error: "Falta email." });
+      return;
+    }
+
+    try {
+      const invitation = Classroom.Invitations.create({
+        courseId: courseId,
+        userId: email,
+        role: "STUDENT"
+      });
+      summary.invited.push({ name: student.name || "", email: email, invitationId: invitation.id || "" });
+    } catch (error) {
+      const text = errorToPlainText(error);
+      if (text.indexOf("ALREADY_EXISTS") !== -1 || text.indexOf("already") !== -1) {
+        summary.skipped.push({ name: student.name || "", email: email, reason: "Ya esta inscrito o invitado." });
+      } else {
+        summary.errors.push({ name: student.name || "", email: email, error: text });
+      }
+    }
+  });
+
+  console.log("Resumen de invitaciones de alumnos: " + JSON.stringify(summary));
+  return summary;
+}
+
+/** Invita el checklist seleccionado a un curso ya configurado en la plantilla. */
+function inviteSelectedStudentsFromTemplate() {
+  const courseId = COURSE_SETUP_TEMPLATE.existingCourseId || COURSE_SETUP_TEMPLATE.courseId;
+  if (!courseId) {
+    throw new Error("Falta COURSE_SETUP_TEMPLATE.existingCourseId.");
+  }
+
+  return inviteStudentsFromTemplate(courseId, COURSE_SETUP_TEMPLATE.students || []);
 }
 
 /**
