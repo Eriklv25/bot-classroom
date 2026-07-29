@@ -7,7 +7,7 @@
  * No pongas API keys ni secretos aqui. Para eso se usa PropertiesService.
  */
 const CONFIG = {
-  DRY_RUN: false,
+  DRY_RUN: true,
   EVALUATE_WITH_OPENAI_IN_DRY_RUN: false,
 
   MAX_RUNTIME_MS: 5 * 60 * 1000,
@@ -50,22 +50,32 @@ const PROPERTY_KEYS = {
 
 
 /**
- * Tareas que el bot debe revisar.
+ * Cursos donde el bot descubre tareas publicadas de forma automatica.
  *
- * Cada objeto representa una tarea de Google Classroom y su documento ejemplo.
- * Puedes agregar nuevas tareas copiando un bloque y cambiando los IDs.
+ * Solo se revisan tareas publicadas cuyo titulo coincide con una regla activa.
  */
-const TASK_CONFIGS = [
+const COURSE_CONFIGS = [
   {
     enabled: true,
-    name: "Prueba calificacion",
     courseId: "841460792596",
-    courseWorkId: "855309186752",
+    sendStudentNotifications: false
+  }
+];
+
+/**
+ * Reglas que relacionan el titulo exacto de una tarea con su documento ejemplo.
+ *
+ * La comparacion de title ignora espacios exteriores y mayusculas. Si una tarea
+ * no coincide con una regla, se omite para evitar evaluarla por error.
+ */
+const TASK_RULES = [
+  {
+    enabled: true,
+    title: "Prueba calificacion",
     exampleFileId: "10osK-b-4ikNS-kIVCBa6_qi6zKTnDfSv",
     promptType: "visual_structure",
     validGrade: 100,
-    invalidGrade: 60,
-    sendStudentNotifications: false
+    invalidGrade: 60
   }
 ];
 
@@ -75,8 +85,8 @@ const TASK_CONFIGS = [
  * Esto ayuda cuando Classroom exige que la tarea haya sido creada por el mismo
  * proyecto OAuth que despues intentara escribir calificaciones.
  *
- * Despues de crear una tarea, copia el courseWorkId que aparezca en logs y
- * pegalo en TASK_CONFIGS para que el bot pueda evaluarla.
+ * Las tareas nuevas se descubren automaticamente si su titulo coincide con una
+ * entrada activa de TASK_RULES.
  */
 const COURSE_WORK_CREATION_CONFIGS = [
   {

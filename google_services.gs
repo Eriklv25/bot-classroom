@@ -699,7 +699,7 @@ function createCourseWorkFromConfig(creationConfig) {
    */
   const created = Classroom.Courses.CourseWork.create(resource, creationConfig.courseId);
   console.log("Tarea creada por Apps Script. courseId=" + creationConfig.courseId + ", courseWorkId=" + created.id);
-  console.log("Copia este ID en TASK_CONFIGS.courseWorkId: " + created.id);
+  console.log("La tarea se descubrira automaticamente si su titulo coincide con una regla activa.");
 
   return created;
 }
@@ -883,7 +883,7 @@ function assignGradeToSubmission(taskConfig, submissionId, grade) {
 function testClassroomGradePermission() {
   const activeTasks = getActiveTaskConfigs();
   if (activeTasks.length === 0) {
-    throw new Error("No hay tareas activas en TASK_CONFIGS.");
+    throw new Error("No se descubrieron tareas publicadas con una regla activa.");
   }
 
   const taskConfig = activeTasks[0];
@@ -928,7 +928,7 @@ function testClassroomGradePermission() {
 function testListPendingSubmissionDetails() {
   const activeTasks = getActiveTaskConfigs();
   if (activeTasks.length === 0) {
-    throw new Error("No hay tareas activas en TASK_CONFIGS.");
+    throw new Error("No se descubrieron tareas publicadas con una regla activa.");
   }
 
   const taskConfig = activeTasks[0];
@@ -1062,7 +1062,7 @@ function testClearBothGradesFromSubmission() {
  *
  * Recibe: courseId y courseWorkId.
  * Devuelve: resumen de limpieza.
- * Se usa: para deshacer pruebas masivas de una sola tarea, este o no activa en TASK_CONFIGS.
+ * Se usa: para deshacer pruebas masivas de una sola tarea, este o no descubierta por el bot.
  */
 function clearBothGradesFromCourseWork(courseId, courseWorkId) {
   if (!courseId) {
@@ -1692,4 +1692,3 @@ function listClassroomBotTriggers() {
     };
   });
 }
-
