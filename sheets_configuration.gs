@@ -1,611 +1,362 @@
-/**
- * Interfaz de configuracion basada en Google Sheets.
- *
- * Ejecuta createConfigurationSpreadsheet una sola vez. El ID se guarda en
- * Script Properties y, desde entonces, el bot carga estas hojas al arrancar.
- * OPENAI_API_KEY nunca se escribe en la hoja.
- */
+/** Interfaz de configuracion: exactamente una hoja de curso, participantes y tareas. */
 const CONFIG_SHEET_NAMES = {
-  HOME: "INICIO",
-  GENERAL: "General",
-  COURSES: "Cursos",
-  TASK_RULES: "Reglas de tareas",
-  CREATION: "Crear tareas",
-  TEMPLATE: "Plantilla del curso",
+  TEMPLATE: "Plantilla de curso",
   STUDENTS: "Participantes",
-  TOPICS: "Temas",
-  TEMPLATE_WORK: "Tareas de plantilla"
+  TASKS: "Tareas"
 };
 
 const COURSE_EXECUTION_CONTROL = {
   CHECKBOX: "B5",
   STATUS: "B7",
   LAST_RUN: "B8",
-  RESULT: "B9"
+  RESULT: "B9",
+  FIELDS_HEADER_ROW: 12
 };
 
-/**
- * Crea la hoja editable en Mi unidad y devuelve su enlace.
- * Si ya existe una hoja configurada, devuelve la misma en vez de duplicarla.
- */
+const TASK_COLUMNS = [
+  "crearAhora", "enabled", "topic", "nombreActividad", "descripcion",
+  "reviewMode", "exampleId", "prompt", "validGrade", "invalidGrade",
+  "maxPoints", "state", "dueDate", "dueTime"
+];
+
+/** Crea la hoja de configuracion o actualiza la existente al formato de tres pestañas. */
 function createConfigurationSpreadsheet() {
-  const existingId = PropertiesService.getScriptProperties().getProperty(
-    PROPERTY_KEYS.CONFIG_SPREADSHEET_ID
-  );
+  const properties = PropertiesService.getScriptProperties();
+  const existingId = properties.getProperty(PROPERTY_KEYS.CONFIG_SPREADSHEET_ID);
+  let spreadsheet = null;
   if (existingId) {
-    let existingSpreadsheet = null;
-    try {
-      existingSpreadsheet = SpreadsheetApp.openById(existingId);
-    } catch (error) {
-      console.log("La hoja configurada anteriormente ya no es accesible; se creara una nueva.");
-    }
-    if (existingSpreadsheet) {
-      writeHomeSheet_(getOrCreateSheet_(existingSpreadsheet, CONFIG_SHEET_NAMES.HOME), existingSpreadsheet);
-      ensureCourseConfigurationTrigger_(existingSpreadsheet);
-      logConfigurationSpreadsheetLink_(existingSpreadsheet, "Hoja de configuracion existente");
-      return existingSpreadsheet.getUrl();
+    try { spreadsheet = SpreadsheetApp.openById(existingId); } catch (error) {
+      console.log("La hoja anterior no es accesible; se creara una nueva.");
     }
   }
-
-  const spreadsheet = SpreadsheetApp.create("Configuracion - Bot Classroom");
-  const firstSheet = spreadsheet.getSheets()[0];
-  firstSheet.setName(CONFIG_SHEET_NAMES.HOME);
-
+  if (!spreadsheet) {
+    spreadsheet = SpreadsheetApp.create("Configuracion - Bot Classroom");
+    properties.setProperty(PROPERTY_KEYS.CONFIG_SPREADSHEET_ID, spreadsheet.getId());
+    moveSpreadsheetToConfiguredFolder_(spreadsheet);
+  }
   writeConfigurationSpreadsheet_(spreadsheet);
   ensureCourseConfigurationTrigger_(spreadsheet);
-  moveSpreadsheetToConfiguredFolder_(spreadsheet);
-  PropertiesService.getScriptProperties().setProperty(
-    PROPERTY_KEYS.CONFIG_SPREADSHEET_ID,
-    spreadsheet.getId()
-  );
-
-  logConfigurationSpreadsheetLink_(spreadsheet, "Hoja creada en Google Drive");
+  logConfigurationSpreadsheetLink_(spreadsheet, "Hoja de configuracion lista");
   return spreadsheet.getUrl();
 }
 
-/** Alias en español visible en el selector de funciones de Apps Script. */
-function crearHojaDeConfiguracion() {
-  return createConfigurationSpreadsheet();
-}
+function crearHojaDeCurso() { return createConfigurationSpreadsheet(); }
+function crearHojaDeConfiguracion() { return createConfigurationSpreadsheet(); }
 
-/**
- * Unico punto de entrada que necesita el usuario en Apps Script.
- * Crea (o abre) la hoja desde la que se crea y se mantiene un curso.
- */
-function crearHojaDeCurso() {
-  return createConfigurationSpreadsheet();
-}
-
-/**
- * Ejecuta la configuracion de la hoja. Tambien es el handler del checkbox
- * EJECUTAR de INICIO, mediante un trigger instalable y autorizado.
- */
+/** Atiende el boton principal y el boton CREAR AHORA de cada fila de Tareas. */
 function ejecutarCambiosDelCurso(event) {
-  if (event && !isCourseExecutionEdit_(event)) return null;
-
-  const spreadsheet = event && event.source
-    ? event.source
-    : getConfigurationSpreadsheet_();
-  const home = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.HOME);
-  if (event) home.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).setValue(false);
-
+  if (event && !isCourseExecutionEdit_(event) && !isTaskCreationEdit_(event)) return null;
+  const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
+  const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  if (event) {
+    if (isTaskCreationEdit_(event)) event.range.offset(0, 1).setValue(true);
+    event.range.setValue(false);
+  }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) {
-    setCourseExecutionStatus_(home, "OCUPADO", "Ya hay otra ejecucion en curso.");
+    setCourseExecutionStatus_(templateSheet, "OCUPADO", "Ya hay otra ejecucion en curso.");
     return null;
   }
-
   try {
-    setCourseExecutionStatus_(home, "EJECUTANDO", "Leyendo la configuracion...");
+    setCourseExecutionStatus_(templateSheet, "EJECUTANDO", "Leyendo la configuracion...");
     loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
     const template = COURSE_SETUP_TEMPLATE;
-    let courseId = String(template.existingCourseId || template.courseId || "").trim();
+    let courseId = String(template.existingCourseId || "").trim();
     let course;
-    let created = false;
-
-    if (!courseId) {
+    const created = !courseId;
+    if (created) {
       course = createClassroomCourseFromConfig(template.course);
       courseId = String(course.id);
-      created = true;
       saveCreatedCourseToSpreadsheet_(spreadsheet, course);
     } else {
       course = updateClassroomCourseFromConfig(courseId, template.course);
     }
-
     const setup = createCourseSetupFromTemplate(Object.assign({}, template, { courseId: courseId }));
     const invitations = inviteStudentsFromTemplate(courseId, template.students || []);
     registerCourseSpreadsheet_(courseId, spreadsheet);
-    setCourseExecutionStatus_(
-      home,
-      "COMPLETADO",
-      (created ? "Curso creado" : "Curso actualizado") + ": " + (course.name || template.course.name) + " (" + courseId + ")"
-    );
+    setCourseExecutionStatus_(templateSheet, "COMPLETADO",
+      (created ? "Curso creado" : "Curso actualizado") + ": " + course.name + " (" + courseId + ")");
     return { course: course, created: created, setup: setup, studentInvitations: invitations };
   } catch (error) {
-    setCourseExecutionStatus_(home, "ERROR", errorToPlainText(error));
+    setCourseExecutionStatus_(templateSheet, "ERROR", errorToPlainText(error));
     throw error;
-  } finally {
-    lock.releaseLock();
-  }
+  } finally { lock.releaseLock(); }
 }
 
 function isCourseExecutionEdit_(event) {
-  if (!event || !event.range || event.value !== "TRUE") return false;
-  return event.range.getSheet().getName() === CONFIG_SHEET_NAMES.HOME &&
+  return event && event.range && event.value === "TRUE" &&
+    event.range.getSheet().getName() === CONFIG_SHEET_NAMES.TEMPLATE &&
     event.range.getA1Notation() === COURSE_EXECUTION_CONTROL.CHECKBOX;
+}
+
+function isTaskCreationEdit_(event) {
+  return event && event.range && event.value === "TRUE" &&
+    event.range.getSheet().getName() === CONFIG_SHEET_NAMES.TASKS && event.range.getColumn() === 1 &&
+    event.range.getRow() > 1;
 }
 
 function ensureCourseConfigurationTrigger_(spreadsheet) {
   const handler = "ejecutarCambiosDelCurso";
-  const spreadsheetId = spreadsheet.getId();
   const exists = ScriptApp.getProjectTriggers().some(function (trigger) {
-    return trigger.getHandlerFunction() === handler && trigger.getTriggerSourceId() === spreadsheetId;
+    return trigger.getHandlerFunction() === handler && trigger.getTriggerSourceId() === spreadsheet.getId();
   });
   if (!exists) ScriptApp.newTrigger(handler).forSpreadsheet(spreadsheet).onEdit().create();
 }
 
-function setCourseExecutionStatus_(home, status, result) {
-  home.getRange(COURSE_EXECUTION_CONTROL.STATUS).setValue(status);
-  home.getRange(COURSE_EXECUTION_CONTROL.LAST_RUN).setValue(new Date()).setNumberFormat("yyyy-mm-dd hh:mm:ss");
-  home.getRange(COURSE_EXECUTION_CONTROL.RESULT).setValue(result || "");
+function setCourseExecutionStatus_(sheet, status, result) {
+  sheet.getRange(COURSE_EXECUTION_CONTROL.STATUS).setValue(status);
+  sheet.getRange(COURSE_EXECUTION_CONTROL.LAST_RUN).setValue(new Date()).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  sheet.getRange(COURSE_EXECUTION_CONTROL.RESULT).setValue(result || "");
   SpreadsheetApp.flush();
 }
 
 function saveCreatedCourseToSpreadsheet_(spreadsheet, course) {
-  const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
-  const values = templateSheet.getDataRange().getValues();
-  values.slice(1).forEach(function (row, index) {
-    if (row[0] === "existingCourseId") templateSheet.getRange(index + 2, 2).setValue(String(course.id));
-    if (row[0] === "createNewCourse") templateSheet.getRange(index + 2, 2).setValue(false);
+  const sheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  const values = sheet.getDataRange().getValues();
+  values.forEach(function (row, index) {
+    if (row[0] === "existingCourseId") sheet.getRange(index + 1, 2).setValue(String(course.id));
   });
-
-  const coursesSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.COURSES);
-  const headers = coursesSheet.getRange(1, 1, 1, coursesSheet.getLastColumn()).getValues()[0];
-  const courseIdColumn = headers.indexOf("courseId") + 1;
-  if (courseIdColumn) coursesSheet.getRange(2, courseIdColumn).setValue(String(course.id));
 }
 
 function registerCourseSpreadsheet_(courseId, spreadsheet) {
   const registry = getCourseSpreadsheetRegistry_();
   registry[String(courseId)] = spreadsheet.getId();
-  saveCourseSpreadsheetRegistry_(registry);
-}
-
-/** Define la carpeta de Drive para las hojas que se creen despues. */
-function configurarCarpetaDeHojas(folderIdOrUrl) {
-  const properties = PropertiesService.getScriptProperties();
-  const folderId = extractDriveId_(folderIdOrUrl);
-  if (!folderId) {
-    properties.deleteProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID);
-    console.log("Las hojas nuevas se guardaran en Mi unidad.");
-    return "";
-  }
-  const folder = DriveApp.getFolderById(folderId);
-  properties.setProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID, folder.getId());
-  console.log("Las hojas nuevas se guardaran en: " + folder.getName());
-  return folder.getUrl();
-}
-
-/** Crea y registra una hoja aislada para un curso existente. */
-function crearHojaDeConfiguracionParaCurso(courseId, courseName, folderIdOrUrl) {
-  if (!courseId) throw new Error("Indica el courseId del curso.");
-  const registry = getCourseSpreadsheetRegistry_();
-  if (registry[courseId]) {
-    const existing = SpreadsheetApp.openById(registry[courseId]);
-    logConfigurationSpreadsheetLink_(existing, "Hoja existente del curso");
-    return existing.getUrl();
-  }
-
-  const spreadsheet = SpreadsheetApp.create("Configuracion - " + (courseName || ("Curso " + courseId)));
-  spreadsheet.getSheets()[0].setName(CONFIG_SHEET_NAMES.HOME);
-  const previousCourses = COURSE_CONFIGS.slice();
-  const previousExistingCourseId = COURSE_SETUP_TEMPLATE.existingCourseId;
-  try {
-    replaceArray_(COURSE_CONFIGS, [{ enabled: true, courseId: String(courseId), sendStudentNotifications: false }]);
-    COURSE_SETUP_TEMPLATE.existingCourseId = String(courseId);
-    writeConfigurationSpreadsheet_(spreadsheet);
-  } finally {
-    replaceArray_(COURSE_CONFIGS, previousCourses);
-    COURSE_SETUP_TEMPLATE.existingCourseId = previousExistingCourseId;
-  }
-
-  moveSpreadsheetToConfiguredFolder_(spreadsheet, folderIdOrUrl);
-  registry[String(courseId)] = spreadsheet.getId();
-  saveCourseSpreadsheetRegistry_(registry);
-  logConfigurationSpreadsheetLink_(spreadsheet, "Hoja independiente creada para el curso");
-  return spreadsheet.getUrl();
-}
-
-/** Sobrescribe la hoja configurada con los valores que actualmente tiene el codigo. */
-function resetConfigurationSpreadsheetFromCode() {
-  const spreadsheet = getConfigurationSpreadsheet_();
-  writeConfigurationSpreadsheet_(spreadsheet);
-  return spreadsheet.getUrl();
-}
-
-/** Devuelve la URL de la interfaz configurada. */
-function getConfigurationSpreadsheetUrl() {
-  const spreadsheet = getConfigurationSpreadsheet_();
-  logConfigurationSpreadsheetLink_(spreadsheet, "Abre la configuracion aqui");
-  return spreadsheet.getUrl();
-}
-
-/** Alias en español que vuelve a mostrar el enlace en el registro de ejecucion. */
-function verEnlaceHojaDeConfiguracion() {
-  return getConfigurationSpreadsheetUrl();
-}
-
-/** Carga y valida todas las secciones editables de la hoja. */
-function loadConfigurationFromSpreadsheet(loadAllCourseSpreadsheets) {
-  const registry = getCourseSpreadsheetRegistry_();
-  const courseIds = Object.keys(registry);
-  if (loadAllCourseSpreadsheets === true && courseIds.length) {
-    const allCourses = [];
-    const allRules = [];
-    const allCreationRows = [];
-    courseIds.forEach(function (courseId) {
-      const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
-      readTable_(spreadsheet, CONFIG_SHEET_NAMES.COURSES).forEach(function (course) {
-        course.courseId = String(courseId);
-        allCourses.push(course);
-      });
-      readTable_(spreadsheet, CONFIG_SHEET_NAMES.TASK_RULES).forEach(function (rule) {
-        rule.courseId = String(courseId);
-        allRules.push(rule);
-      });
-      readCreationRows_(spreadsheet).forEach(function (row) {
-        row.courseId = String(courseId);
-        allCreationRows.push(row);
-      });
-    });
-    replaceArray_(COURSE_CONFIGS, allCourses);
-    replaceArray_(TASK_RULES, allRules);
-    replaceArray_(COURSE_WORK_CREATION_CONFIGS, allCreationRows);
-    return true;
-  }
-
-  const propertyValue = PropertiesService.getScriptProperties().getProperty(
-    PROPERTY_KEYS.CONFIG_SPREADSHEET_ID
-  );
-  if (!propertyValue) {
-    return false;
-  }
-
-  const spreadsheet = SpreadsheetApp.openById(propertyValue);
-  loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
-  return true;
-}
-
-function loadConfigurationFromSpecificSpreadsheet_(spreadsheet) {
-  applyGeneralConfiguration_(readObjectRows_(spreadsheet, CONFIG_SHEET_NAMES.GENERAL));
-  replaceArray_(COURSE_CONFIGS, readTable_(spreadsheet, CONFIG_SHEET_NAMES.COURSES));
-  replaceArray_(TASK_RULES, readTable_(spreadsheet, CONFIG_SHEET_NAMES.TASK_RULES));
-  replaceArray_(COURSE_WORK_CREATION_CONFIGS, readCreationRows_(spreadsheet));
-  applyCourseTemplate_(spreadsheet);
+  PropertiesService.getScriptProperties().setProperty(PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS, JSON.stringify(registry));
 }
 
 function getCourseSpreadsheetRegistry_() {
   const value = PropertiesService.getScriptProperties().getProperty(PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS);
   if (!value) return {};
-  try {
-    return JSON.parse(value) || {};
-  } catch (error) {
-    throw new Error("COURSE_CONFIG_SPREADSHEETS no contiene JSON valido.");
-  }
+  try { return JSON.parse(value) || {}; } catch (error) { throw new Error("Registro de hojas invalido."); }
 }
 
-function saveCourseSpreadsheetRegistry_(registry) {
-  PropertiesService.getScriptProperties().setProperty(
-    PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS,
-    JSON.stringify(registry)
-  );
+function configurarCarpetaDeHojas(folderIdOrUrl) {
+  const id = extractDriveId_(folderIdOrUrl);
+  const properties = PropertiesService.getScriptProperties();
+  if (id) properties.setProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID, id);
+  else properties.deleteProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID);
+  return id;
 }
 
 function extractDriveId_(value) {
   const text = String(value || "").trim();
   if (!text) return "";
   const match = text.match(/[-\w]{20,}/);
-  if (!match) throw new Error("No se encontro un ID de carpeta valido.");
+  if (!match) throw new Error("No se encontro un ID de Drive valido.");
   return match[0];
 }
 
 function moveSpreadsheetToConfiguredFolder_(spreadsheet, folderIdOrUrl) {
-  const folderId = extractDriveId_(folderIdOrUrl) ||
-    PropertiesService.getScriptProperties().getProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID);
-  if (!folderId) return;
-  DriveApp.getFileById(spreadsheet.getId()).moveTo(DriveApp.getFolderById(folderId));
+  const id = extractDriveId_(folderIdOrUrl) || PropertiesService.getScriptProperties().getProperty(PROPERTY_KEYS.CONFIG_FOLDER_ID);
+  if (id) DriveApp.getFileById(spreadsheet.getId()).moveTo(DriveApp.getFolderById(id));
+}
+
+function resetConfigurationSpreadsheetFromCode() { return createConfigurationSpreadsheet(); }
+function getConfigurationSpreadsheetUrl() { return getConfigurationSpreadsheet_().getUrl(); }
+function verEnlaceHojaDeConfiguracion() { return getConfigurationSpreadsheetUrl(); }
+
+/** Carga todas las hojas registradas para que el proceso programado revise sus tareas. */
+function loadConfigurationFromSpreadsheet(loadAllCourseSpreadsheets) {
+  const registry = getCourseSpreadsheetRegistry_();
+  const ids = Object.keys(registry);
+  if (loadAllCourseSpreadsheets === true && ids.length) {
+    const courses = [], rules = [];
+    ids.forEach(function (courseId) {
+      const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
+      readTaskRows_(spreadsheet).forEach(function (task) { rules.push(toTaskRule_(task, courseId)); });
+      courses.push({ enabled: true, courseId: courseId, sendStudentNotifications: false });
+    });
+    replaceArray_(COURSE_CONFIGS, courses);
+    replaceArray_(TASK_RULES, rules);
+    return true;
+  }
+  const id = PropertiesService.getScriptProperties().getProperty(PROPERTY_KEYS.CONFIG_SPREADSHEET_ID);
+  if (!id) return false;
+  loadConfigurationFromSpecificSpreadsheet_(SpreadsheetApp.openById(id));
+  return true;
+}
+
+function loadConfigurationFromSpecificSpreadsheet_(spreadsheet) {
+  applyCourseTemplate_(spreadsheet);
+  const courseId = String(COURSE_SETUP_TEMPLATE.existingCourseId || "");
+  replaceArray_(COURSE_CONFIGS, courseId ? [{ enabled: true, courseId: courseId, sendStudentNotifications: false }] : []);
+  replaceArray_(TASK_RULES, readTaskRows_(spreadsheet).map(function (task) { return toTaskRule_(task, courseId); }));
 }
 
 function writeConfigurationSpreadsheet_(spreadsheet) {
-  writeHomeSheet_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.HOME), spreadsheet);
-  writeObjectRows_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.GENERAL), CONFIG);
-  writeTable_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.COURSES), COURSE_CONFIGS);
-  writeTable_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.TASK_RULES), TASK_RULES);
-  writeCreationRows_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.CREATION));
-  writeTemplateSheets_(spreadsheet);
-  spreadsheet.setActiveSheet(spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.HOME));
+  const template = getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  writeTemplateSheet_(template);
+  writeTable_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS), COURSE_SETUP_TEMPLATE.students);
+  writeTasksSheet_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.TASKS));
+  spreadsheet.getSheets().forEach(function (sheet) {
+    if ([CONFIG_SHEET_NAMES.TEMPLATE, CONFIG_SHEET_NAMES.STUDENTS, CONFIG_SHEET_NAMES.TASKS].indexOf(sheet.getName()) === -1) {
+      spreadsheet.deleteSheet(sheet);
+    }
+  });
+  spreadsheet.setActiveSheet(template);
 }
 
-function writeHomeSheet_(sheet, spreadsheet) {
+function writeTemplateSheet_(sheet) {
+  const template = COURSE_SETUP_TEMPLATE;
   const rows = [
-    ["CONFIGURACION DEL CURSO EN CLASSROOM", ""],
-    ["1. CONFIGURA", "Edita Plantilla del curso, Participantes, Temas, Tareas de plantilla y las opciones del bot."],
-    ["2. GUARDA", "No tienes que guardar: Google Sheets conserva los cambios automaticamente."],
-    ["3. APLICA", "Marca la casilla EJECUTAR. La primera vez crea el curso; despues actualiza la misma configuracion."],
-    ["EJECUTAR", false],
-    ["Aviso", "No cambies los nombres de las pestañas, encabezados ni campos de la primera columna."],
-    ["Estado", "LISTO"],
-    ["Ultima ejecucion", ""],
-    ["Resultado", "Aun no se han enviado cambios a Classroom."],
-    ["Enlace", spreadsheet.getUrl()],
-    ["Seguridad", "OPENAI_API_KEY permanece en Script Properties y no aparece aqui."],
-    ["Formatos", "Fechas: AAAA-MM-DD. Horas: HH:MM."]
+    ["PLANTILLA DE CURSO", ""],
+    ["1. CONFIGURA", "Completa esta pestaña, Participantes y Tareas."],
+    ["2. GUARDA", "Google Sheets guarda automaticamente."],
+    ["3. APLICA", "Marca EJECUTAR para crear o actualizar el curso completo."],
+    ["EJECUTAR", false], ["Aviso", "No cambies pestañas, encabezados ni nombres de campo."],
+    ["Estado", "LISTO"], ["Ultima ejecucion", ""], ["Resultado", "Sin cambios enviados."], ["", ""],
+    ["Campo", "Valor"],
+    ["existingCourseId", template.existingCourseId], ["courseName", template.course.name],
+    ["courseSection", template.course.section], ["descriptionHeading", template.course.descriptionHeading],
+    ["courseDescription", template.course.description], ["room", template.course.room],
+    ["ownerId", template.course.ownerId], ["courseState", template.course.courseState],
+    ["skipExistingCourseWork", template.skipExistingCourseWork], ["defaultState", template.defaultState],
+    ["defaultMaxPoints", template.defaultMaxPoints]
   ];
   replaceSheetValues_(sheet, rows);
-  sheet.setFrozenRows(1);
-  sheet.getRange("A1:B1").merge().setBackground("#1a73e8").setFontColor("#ffffff")
-    .setFontWeight("bold").setFontSize(14).setHorizontalAlignment("center");
-  sheet.getRange("A2:A12").setFontWeight("bold").setBackground("#e8f0fe");
+  sheet.getRange("A1:B1").merge().setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).insertCheckboxes().setBackground("#34a853");
-  sheet.getRange("A5:B5").setFontWeight("bold").setFontSize(13).setBorder(true, true, true, true, true, true);
-  sheet.getRange("B10").setFormula('=HYPERLINK("' + spreadsheet.getUrl() + '","ABRIR ESTA HOJA")');
-  sheet.setColumnWidth(1, 130);
-  sheet.setColumnWidth(2, 620);
-  sheet.getRange("A1:B12").setWrap(true).setVerticalAlignment("middle");
-  sheet.setRowHeight(1, 36);
+  sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
+  sheet.getRange("B20").insertCheckboxes();
+  sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 620); sheet.getDataRange().setWrap(true);
 }
 
-function writeObjectRows_(sheet, object) {
-  const rows = [["Campo", "Valor", "Ayuda"]];
-  Object.keys(object).forEach(function (key) {
-    rows.push([key, object[key], getGeneralHelp_(key)]);
-  });
-  replaceSheetValues_(sheet, rows);
-  formatConfigurationSheet_(sheet, 3);
-  Object.keys(object).forEach(function (key, index) {
-    if (typeof object[key] === "boolean") sheet.getRange(index + 2, 2).insertCheckboxes();
-  });
-}
-
-function writeTable_(sheet, records) {
-  const headers = collectHeaders_(records);
-  const rows = [headers].concat(records.map(function (record) {
-    return headers.map(function (header) { return serializeCell_(record[header]); });
-  }));
-  replaceSheetValues_(sheet, rows);
-  formatConfigurationSheet_(sheet, Math.max(headers.length, 1));
-  addBooleanValidation_(sheet, headers, records);
-  addReviewModeValidation_(sheet, headers, records.length);
-}
-
-function writeCreationRows_(sheet) {
-  const records = COURSE_WORK_CREATION_CONFIGS.map(function (item) {
+function writeTasksSheet_(sheet) {
+  const rulesByTitle = {};
+  TASK_RULES.forEach(function (rule) { rulesByTitle[normalizeTaskTitle(rule.title)] = rule; });
+  const rows = COURSE_SETUP_TEMPLATE.courseWork.map(function (work) {
+    const rule = rulesByTitle[normalizeTaskTitle(work.title)] || {};
     return {
-      enabled: item.enabled,
-      courseId: item.courseId,
-      title: item.title,
-      description: item.description,
-      maxPoints: item.maxPoints,
-      state: item.state,
-      topicId: item.topicId || "",
-      dueDate: item.dueDate ? formatDateParts_(item.dueDate) : "",
-      dueTime: item.dueTime ? formatTimeParts_(item.dueTime) : ""
+      crearAhora: false, enabled: work.enabled !== false, topic: work.topicName || "",
+      nombreActividad: work.title, descripcion: work.description || "",
+      reviewMode: rule.reviewMode || REVIEW_MODES.DOCUMENT_ONLY,
+      exampleId: rule.exampleFileId || "", prompt: rule.prompt || "",
+      validGrade: rule.validGrade || CONFIG.VALID_GRADE, invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
+      maxPoints: work.maxPoints || COURSE_SETUP_TEMPLATE.defaultMaxPoints, state: work.state || COURSE_SETUP_TEMPLATE.defaultState,
+      dueDate: work.dueDate ? formatDateParts_(work.dueDate) : "", dueTime: work.dueTime ? formatTimeParts_(work.dueTime) : ""
     };
   });
-  writeTable_(sheet, records);
+  writeTableWithHeaders_(sheet, TASK_COLUMNS, rows);
+  const editableRows = Math.max(rows.length + 25, 50);
+  sheet.getRange(2, 1, editableRows, 2).insertCheckboxes();
+  const reviewRule = SpreadsheetApp.newDataValidation().requireValueInList([REVIEW_MODES.DOCUMENT_ONLY, REVIEW_MODES.AI], true).build();
+  sheet.getRange(2, 6, editableRows, 1).setDataValidation(reviewRule);
+  sheet.setFrozenColumns(4);
 }
 
-function writeTemplateSheets_(spreadsheet) {
-  const template = COURSE_SETUP_TEMPLATE;
-  const flatTemplate = {
-    createNewCourse: template.createNewCourse,
-    existingCourseId: template.existingCourseId,
-    courseName: template.course.name,
-    courseSection: template.course.section,
-    descriptionHeading: template.course.descriptionHeading,
-    courseDescription: template.course.description,
-    room: template.course.room,
-    ownerId: template.course.ownerId,
-    courseState: template.course.courseState,
-    invitationReminderEnabled: template.teacherInvitationReminder.enabled,
-    invitationReminderSubject: template.teacherInvitationReminder.subject,
-    invitationReminderBodyIntro: template.teacherInvitationReminder.bodyIntro,
-    skipExistingCourseWork: template.skipExistingCourseWork,
-    defaultState: template.defaultState,
-    defaultMaxPoints: template.defaultMaxPoints
-  };
-  writeObjectRows_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE), flatTemplate);
-  writeTable_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS), template.students);
-  writeTable_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.TOPICS), template.topics);
-  const templateWork = template.courseWork.map(function (item) {
-    const copy = Object.assign({}, item);
-    copy.dueDate = item.dueDate ? formatDateParts_(item.dueDate) : "";
-    return copy;
-  });
-  writeTable_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE_WORK), templateWork);
+function applyCourseTemplate_(spreadsheet) {
+  const values = readTemplateFields_(spreadsheet);
+  COURSE_SETUP_TEMPLATE.existingCourseId = values.existingCourseId || "";
+  COURSE_SETUP_TEMPLATE.course = { name: values.courseName, section: values.courseSection || "",
+    descriptionHeading: values.descriptionHeading || "", description: values.courseDescription || "",
+    room: values.room || "", ownerId: values.ownerId || "me", courseState: values.courseState || "ACTIVE" };
+  COURSE_SETUP_TEMPLATE.skipExistingCourseWork = values.skipExistingCourseWork !== false;
+  COURSE_SETUP_TEMPLATE.defaultState = values.defaultState || "DRAFT";
+  COURSE_SETUP_TEMPLATE.defaultMaxPoints = values.defaultMaxPoints || 100;
+  replaceArray_(COURSE_SETUP_TEMPLATE.students, readTable_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS));
+  const tasks = readTaskRows_(spreadsheet);
+  replaceArray_(COURSE_SETUP_TEMPLATE.topics, uniqueTopics_(tasks));
+  replaceArray_(COURSE_SETUP_TEMPLATE.courseWork, tasks.map(function (task) {
+    return { enabled: task.enabled !== false, topicName: task.topic, title: task.nombreActividad,
+      description: task.descripcion || "", maxPoints: task.maxPoints, state: task.state,
+      dueDate: parseDateParts_(task.dueDate), dueTime: parseTimeParts_(task.dueTime) };
+  }));
 }
 
-function readObjectRows_(spreadsheet, sheetName) {
-  const values = requireSheet_(spreadsheet, sheetName).getDataRange().getValues();
+function readTemplateFields_(spreadsheet) {
+  const rows = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE).getDataRange().getValues();
   const result = {};
-  values.slice(1).forEach(function (row) {
-    const key = String(row[0] || "").trim();
-    if (key) result[key] = parseCell_(row[1]);
+  rows.slice(COURSE_EXECUTION_CONTROL.FIELDS_HEADER_ROW - 1).forEach(function (row) {
+    if (row[0]) result[String(row[0]).trim()] = parseCell_(row[1]);
   });
   return result;
+}
+
+function readTaskRows_(spreadsheet) {
+  return readTable_(spreadsheet, CONFIG_SHEET_NAMES.TASKS).filter(function (row) { return row.nombreActividad; });
+}
+
+function toTaskRule_(task, courseId) {
+  return { enabled: task.enabled !== false, courseId: courseId || "", title: task.nombreActividad,
+    reviewMode: task.reviewMode || REVIEW_MODES.DOCUMENT_ONLY, exampleFileId: task.exampleId || "",
+    prompt: task.prompt || "", validGrade: Number(task.validGrade || CONFIG.VALID_GRADE),
+    invalidGrade: Number(task.invalidGrade || CONFIG.INVALID_GRADE) };
+}
+
+function uniqueTopics_(tasks) {
+  const seen = {};
+  return tasks.filter(function (task) {
+    const key = normalizeTaskTitle(task.topic);
+    if (!key || seen[key]) return false;
+    seen[key] = true; return true;
+  }).map(function (task) { return { name: task.topic }; });
 }
 
 function readTable_(spreadsheet, sheetName) {
   const values = requireSheet_(spreadsheet, sheetName).getDataRange().getValues();
   if (values.length < 2) return [];
-  const headers = values[0].map(function (value) { return String(value).trim(); });
-  return values.slice(1).filter(function (row) {
-    return row.some(function (cell) { return cell !== ""; });
-  }).map(function (row) {
-    const record = {};
-    headers.forEach(function (header, index) {
-      if (header) record[header] = parseCell_(row[index]);
-    });
-    return record;
+  const headers = values[0].map(String);
+  return values.slice(1).filter(function (row) { return row.some(function (cell) { return cell !== ""; }); }).map(function (row) {
+    const item = {}; headers.forEach(function (header, index) { if (header) item[header] = parseCell_(row[index]); }); return item;
   });
 }
 
-function readCreationRows_(spreadsheet) {
-  return readTable_(spreadsheet, CONFIG_SHEET_NAMES.CREATION).map(function (row) {
-    row.dueDate = parseDateParts_(row.dueDate);
-    row.dueTime = parseTimeParts_(row.dueTime);
-    if (!row.dueDate) delete row.dueDate;
-    if (!row.dueTime) delete row.dueTime;
-    return row;
-  });
-}
-
-function applyGeneralConfiguration_(values) {
-  Object.keys(CONFIG).forEach(function (key) {
-    if (Object.prototype.hasOwnProperty.call(values, key)) CONFIG[key] = values[key];
-  });
-}
-
-function applyCourseTemplate_(spreadsheet) {
-  const values = readObjectRows_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
-  COURSE_SETUP_TEMPLATE.createNewCourse = values.createNewCourse;
-  COURSE_SETUP_TEMPLATE.existingCourseId = values.existingCourseId || "";
-  COURSE_SETUP_TEMPLATE.course = {
-    name: values.courseName,
-    section: values.courseSection,
-    descriptionHeading: values.descriptionHeading,
-    description: values.courseDescription,
-    room: values.room,
-    ownerId: values.ownerId,
-    courseState: values.courseState
-  };
-  COURSE_SETUP_TEMPLATE.teacherInvitationReminder = {
-    enabled: values.invitationReminderEnabled,
-    subject: values.invitationReminderSubject,
-    bodyIntro: values.invitationReminderBodyIntro
-  };
-  COURSE_SETUP_TEMPLATE.skipExistingCourseWork = values.skipExistingCourseWork;
-  COURSE_SETUP_TEMPLATE.defaultState = values.defaultState;
-  COURSE_SETUP_TEMPLATE.defaultMaxPoints = values.defaultMaxPoints;
-  replaceArray_(COURSE_SETUP_TEMPLATE.students, readTable_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS));
-  replaceArray_(COURSE_SETUP_TEMPLATE.topics, readTable_(spreadsheet, CONFIG_SHEET_NAMES.TOPICS));
-  replaceArray_(COURSE_SETUP_TEMPLATE.courseWork, readTable_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE_WORK).map(function (item) {
-    item.dueDate = parseDateParts_(item.dueDate);
-    return item;
-  }));
+function writeTable_(sheet, records) { writeTableWithHeaders_(sheet, collectHeaders_(records), records); }
+function writeTableWithHeaders_(sheet, headers, records) {
+  replaceSheetValues_(sheet, [headers].concat(records.map(function (record) {
+    return headers.map(function (header) { return serializeCell_(record[header]); });
+  })));
+  sheet.setFrozenRows(1);
+  sheet.getRange(1, 1, 1, headers.length).setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
+  sheet.autoResizeColumns(1, headers.length);
+  records.forEach(function (record, row) { headers.forEach(function (header, column) {
+    if (typeof record[header] === "boolean") sheet.getRange(row + 2, column + 1).insertCheckboxes();
+  }); });
 }
 
 function parseCell_(value) {
   if (typeof value !== "string") return value;
-  const trimmed = value.trim();
-  if (/^(true|verdadero|si|sí)$/i.test(trimmed)) return true;
-  if (/^(false|falso|no)$/i.test(trimmed)) return false;
-  if (/^-?\d+(\.\d+)?$/.test(trimmed)) return Number(trimmed);
-  if (/^(null|ninguna)$/i.test(trimmed)) return null;
+  const text = value.trim();
+  if (/^(true|verdadero|si|sí)$/i.test(text)) return true;
+  if (/^(false|falso|no)$/i.test(text)) return false;
+  if (/^-?\d+(\.\d+)?$/.test(text)) return Number(text);
   return value;
 }
-
 function parseDateParts_(value) {
   if (!value) return null;
   if (value instanceof Date) return { year: value.getFullYear(), month: value.getMonth() + 1, day: value.getDate() };
-  const match = String(value).trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  const match = String(value).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (!match) throw new Error("Fecha invalida; usa AAAA-MM-DD: " + value);
   return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
 }
-
 function parseTimeParts_(value) {
   if (!value) return null;
   if (value instanceof Date) return { hours: value.getHours(), minutes: value.getMinutes() };
-  const match = String(value).trim().match(/^(\d{1,2}):(\d{2})$/);
+  const match = String(value).match(/^(\d{1,2}):(\d{2})$/);
   if (!match) throw new Error("Hora invalida; usa HH:MM: " + value);
   return { hours: Number(match[1]), minutes: Number(match[2]) };
 }
-
-function formatDateParts_(value) {
-  return [value.year, padTwo_(value.month), padTwo_(value.day)].join("-");
-}
-
-function formatTimeParts_(value) {
-  return padTwo_(value.hours) + ":" + padTwo_(value.minutes);
-}
-
+function formatDateParts_(value) { return [value.year, padTwo_(value.month), padTwo_(value.day)].join("-"); }
+function formatTimeParts_(value) { return padTwo_(value.hours) + ":" + padTwo_(value.minutes); }
 function padTwo_(value) { return String(value).padStart(2, "0"); }
 function serializeCell_(value) { return value === null || value === undefined ? "" : value; }
 function replaceArray_(target, source) { target.splice.apply(target, [0, target.length].concat(source)); }
-
 function collectHeaders_(records) {
-  const headers = [];
-  records.forEach(function (record) {
-    Object.keys(record).forEach(function (key) {
-      if (headers.indexOf(key) === -1) headers.push(key);
-    });
-  });
-  return headers.length ? headers : ["enabled"];
+  const headers = []; records.forEach(function (record) { Object.keys(record).forEach(function (key) {
+    if (headers.indexOf(key) === -1) headers.push(key);
+  }); }); return headers.length ? headers : ["enabled"];
 }
-
 function getConfigurationSpreadsheet_() {
   const id = PropertiesService.getScriptProperties().getProperty(PROPERTY_KEYS.CONFIG_SPREADSHEET_ID);
-  if (!id) throw new Error("Primero ejecuta createConfigurationSpreadsheet.");
+  if (!id) throw new Error("Primero ejecuta crearHojaDeCurso.");
   return SpreadsheetApp.openById(id);
 }
-
-function logConfigurationSpreadsheetLink_(spreadsheet, message) {
-  console.log(message + ": " + spreadsheet.getUrl());
-  console.log("Tambien puedes encontrarla en Google Drive con el nombre: " + spreadsheet.getName());
-}
-
-function getOrCreateSheet_(spreadsheet, name) {
-  return spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name);
-}
-
+function logConfigurationSpreadsheetLink_(spreadsheet, message) { console.log(message + ": " + spreadsheet.getUrl()); }
+function getOrCreateSheet_(spreadsheet, name) { return spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name); }
 function requireSheet_(spreadsheet, name) {
-  const sheet = spreadsheet.getSheetByName(name);
-  if (!sheet) throw new Error("Falta la pestaña de configuracion: " + name);
-  return sheet;
+  const sheet = spreadsheet.getSheetByName(name); if (!sheet) throw new Error("Falta la pestaña: " + name); return sheet;
 }
-
 function replaceSheetValues_(sheet, rows) {
-  sheet.getDataRange().breakApart();
-  sheet.clear();
+  sheet.getDataRange().breakApart(); sheet.clear();
   if (rows.length && rows[0].length) sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
-}
-
-function formatConfigurationSheet_(sheet, columns) {
-  sheet.getBandings().forEach(function (banding) { banding.remove(); });
-  sheet.setFrozenRows(1);
-  sheet.getRange(1, 1, 1, columns).setBackground("#1a73e8").setFontColor("#ffffff").setFontWeight("bold");
-  sheet.autoResizeColumns(1, columns);
-  if (sheet.getMaxRows() > 1) sheet.getRange(2, 1, sheet.getMaxRows() - 1, columns).applyRowBanding();
-}
-
-function addBooleanValidation_(sheet, headers, records) {
-  if (!records.length) return;
-  headers.forEach(function (header, index) {
-    const containsBoolean = records.some(function (record) { return typeof record[header] === "boolean"; });
-    if (containsBoolean) {
-      sheet.getRange(2, index + 1, records.length, 1).insertCheckboxes();
-    }
-  });
-}
-
-function addReviewModeValidation_(sheet, headers, rowCount) {
-  const index = headers.indexOf("reviewMode");
-  if (index === -1 || !rowCount) return;
-  const rule = SpreadsheetApp.newDataValidation().requireValueInList([REVIEW_MODES.DOCUMENT_ONLY, REVIEW_MODES.AI], true).build();
-  sheet.getRange(2, index + 1, rowCount, 1).setDataValidation(rule);
-}
-
-function getGeneralHelp_(key) {
-  const help = {
-    DRY_RUN: "TRUE prueba sin escribir calificaciones.",
-    EVALUATE_WITH_OPENAI_IN_DRY_RUN: "Permite llamar a OpenAI durante la prueba.",
-    MAX_RUNTIME_MS: "Tiempo maximo del lote en milisegundos.",
-    SAFETY_MARGIN_MS: "Margen antes del limite de ejecucion.",
-    MAX_EVIDENCES_PER_RUN: "Entregas maximas por corrida.",
-    ADMIN_EMAIL: "Correo que recibe errores y resumenes.",
-    SHEETS_LOG_ID: "ID de la hoja de bitacora; puede ser esta misma hoja.",
-    OPENAI_MODEL: "Modelo utilizado para revisar PDFs.",
-    TRIGGER_EVERY_HOURS: "Frecuencia del trigger en horas."
-  };
-  return help[key] || "Valor general del bot.";
 }

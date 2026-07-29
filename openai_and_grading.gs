@@ -45,6 +45,15 @@ function buildEvaluationPrompt(taskConfig) {
   const invalidGrade = taskConfig.invalidGrade || CONFIG.INVALID_GRADE;
   const hasExample = Boolean(taskConfig.exampleFileId);
 
+  if (taskConfig.prompt && String(taskConfig.prompt).trim()) {
+    return [
+      String(taskConfig.prompt).trim(),
+      "Responde unicamente JSON valido, sin Markdown y con esta forma:",
+      "{\"valida\":true,\"motivo\":\"explicacion breve\",\"diferencias\":[\"diferencia 1\"],\"calificacion\":" + validGrade + "}",
+      "Si la evidencia no es valida, usa calificacion " + invalidGrade + "."
+    ].join("\n");
+  }
+
   return [
     hasExample ? "Se adjuntan 2 documentos PDF." : "Se adjunta 1 documento PDF como evidencia.",
     "El primer archivo corresponde a la evidencia entregada por el estudiante.",
