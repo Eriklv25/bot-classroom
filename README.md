@@ -49,6 +49,20 @@ del archivo de credenciales actualizado. Nunca confirmes ese archivo en Git.
 - Activa `DRY_RUN` para la primera prueba y revisa los registros antes de
   permitir que el bot escriba calificaciones.
 
+## Preparacion de un curso desde la plantilla
+
+- `COURSE_SETUP_TEMPLATE` incluye los temas `INICIO DEL CURSO`, `CURSO` y
+  `FINAL DEL CURSO`, junto con las tareas base de cada etapa.
+- Ejecuta `createNewCourseFromTemplate` para crear un curso nuevo con todos sus
+  temas y tareas.
+- Para agregar una sola tarea a un curso existente, copia su ID en
+  `COURSE_SETUP_TEMPLATE.existingCourseId`, escribe el titulo deseado en
+  `selectedCourseWorkTitle` y ejecuta `createSelectedCourseWorkFromTemplate`.
+- Tambien puedes llamar desde codigo a
+  `createCourseWorkFromTemplateByTitle("Titulo exacto")`. La funcion reutiliza
+  el tema correspondiente y omite la tarea si ya existe y
+  `skipExistingCourseWork` esta activo.
+
 ## Descubrimiento automatico de tareas
 
 - Agrega cada curso que deba revisarse en `COURSE_CONFIGS`.

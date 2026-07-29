@@ -115,7 +115,8 @@ const COURSE_WORK_CREATION_CONFIGS = [
  * 1. Ajusta los datos de course.
  * 2. Agrega correos de profesores en teachers.
  * 3. Ajusta topics y courseWork.
- * 4. Ejecuta createNewCourseFromTemplate.
+ * 4. Ejecuta createNewCourseFromTemplate para crear todo, o usa
+ *    createSelectedCourseWorkFromTemplate para crear una sola tarea.
  * 5. Copia el courseId creado en existingCourseId para continuar ajustes sin crear otro curso.
  */
 const COURSE_SETUP_TEMPLATE = {
@@ -142,47 +143,116 @@ const COURSE_SETUP_TEMPLATE = {
   skipExistingCourseWork: true,
   defaultState: "DRAFT",
   defaultMaxPoints: 100,
+  selectedCourseWorkTitle: "Evidencia de Instrumentación Didáctica",
   topics: [
-    { name: "Primer parcial" },
-    { name: "Segundo parcial" },
-    { name: "Tercer parcial" },
-    { name: "Cuarto parcial" },
-    { name: "Cierre de semestre" }
+    { name: "INICIO DEL CURSO" },
+    { name: "CURSO" },
+    { name: "FINAL DEL CURSO" }
   ],
   courseWork: [
     {
       enabled: true,
-      topicName: "Primer parcial",
+      topicName: "INICIO DEL CURSO",
+      title: "Evidencia de Instrumentación Didáctica",
+      description: "Sube la evidencia correspondiente en PDF.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "INICIO DEL CURSO",
+      title: "Evidencia de Socializar la Instrumentación Didáctica",
+      description: "Sube la evidencia correspondiente en PDF.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "INICIO DEL CURSO",
+      title: "Evaluación diagnóstica",
+      description: "Realiza la evaluación diagnóstica indicada.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "CURSO",
+      title: "Evidencia pase de lista primer parcial",
+      description: "Sube la evidencia del pase de lista correspondiente.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "CURSO",
       title: "Evidencia de Primer Parcial",
       description: "Sube la evidencia correspondiente en PDF.",
       dueDate: null
     },
     {
       enabled: true,
-      topicName: "Segundo parcial",
+      topicName: "CURSO",
+      title: "Evidencia pase de lista segundo parcial",
+      description: "Sube la evidencia del pase de lista correspondiente.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "CURSO",
       title: "Evidencia del Segundo Parcial",
       description: "Sube la evidencia correspondiente en PDF.",
       dueDate: null
     },
     {
       enabled: true,
-      topicName: "Tercer parcial",
+      topicName: "CURSO",
+      title: "Evidencia pase de lista tercer parcial",
+      description: "Sube la evidencia del pase de lista correspondiente.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "CURSO",
       title: "Evidencia del Tercer Parcial",
       description: "Sube la evidencia correspondiente en PDF.",
       dueDate: null
     },
     {
       enabled: true,
-      topicName: "Cuarto parcial",
+      topicName: "CURSO",
+      title: "Evidencia pase de lista cuarto parcial",
+      description: "Sube la evidencia del pase de lista correspondiente.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "CURSO",
       title: "Evidencia del Cuarto parcial",
       description: "Sube la evidencia correspondiente en PDF.",
       dueDate: null
     },
     {
       enabled: true,
-      topicName: "Cierre de semestre",
+      topicName: "FINAL DEL CURSO",
+      title: "Evaluación Departamental",
+      description: "Realiza la evaluación departamental indicada.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "FINAL DEL CURSO",
+      title: "Evaluación Docente",
+      description: "Realiza la evaluación docente indicada.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "FINAL DEL CURSO",
       title: "Reporte Final",
       description: "Sube el reporte final en PDF.",
+      dueDate: null
+    },
+    {
+      enabled: true,
+      topicName: "FINAL DEL CURSO",
+      title: "ACTAS FINALES de calificaciones",
+      description: "Sube las actas finales de calificaciones.",
       dueDate: null
     }
   ]
