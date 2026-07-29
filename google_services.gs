@@ -300,56 +300,6 @@ function setupCourseFromTemplate() {
 }
 
 /**
- * Crea solo la tarea seleccionada en COURSE_SETUP_TEMPLATE.
- *
- * Recibe: nada; usa existingCourseId y selectedCourseWorkTitle de la plantilla.
- * Devuelve: resumen con la tarea creada u omitida.
- * Se usa: manualmente para preparar las tareas una por una sin ejecutar todo el setup.
- */
-function createSelectedCourseWorkFromTemplate() {
-  return createCourseWorkFromTemplateByTitle(
-    COURSE_SETUP_TEMPLATE.selectedCourseWorkTitle
-  );
-}
-
-/**
- * Crea una sola tarea de la plantilla identificada por su titulo.
- *
- * Recibe: titulo exacto de una entrada de COURSE_SETUP_TEMPLATE.courseWork.
- * Devuelve: resumen con la tarea creada u omitida.
- * Se usa: desde otra funcion o el editor para crear tareas de manera independiente.
- */
-function createCourseWorkFromTemplateByTitle(courseWorkTitle) {
-  const titleKey = normalizeSetupName(courseWorkTitle);
-  if (!titleKey) {
-    throw new Error("Falta el titulo de la tarea que se desea crear.");
-  }
-
-  const workConfig = (COURSE_SETUP_TEMPLATE.courseWork || []).find(function (item) {
-    return normalizeSetupName(item.title) === titleKey;
-  });
-
-  if (!workConfig) {
-    throw new Error("La tarea no existe en COURSE_SETUP_TEMPLATE.courseWork: " + courseWorkTitle);
-  }
-
-  if (workConfig.enabled === false) {
-    throw new Error("La tarea esta deshabilitada en COURSE_SETUP_TEMPLATE: " + workConfig.title);
-  }
-
-  const courseId = COURSE_SETUP_TEMPLATE.existingCourseId || COURSE_SETUP_TEMPLATE.courseId;
-  if (!courseId) {
-    throw new Error("Falta COURSE_SETUP_TEMPLATE.existingCourseId para crear la tarea seleccionada.");
-  }
-
-  return createCourseSetupFromTemplate(Object.assign({}, COURSE_SETUP_TEMPLATE, {
-    courseId: courseId,
-    topics: workConfig.topicName ? [{ name: workConfig.topicName }] : [],
-    courseWork: [workConfig]
-  }));
-}
-
-/**
  * Crea temas y tareas desde una plantilla de curso.
  *
  * Recibe: plantilla con courseId, topics y courseWork.

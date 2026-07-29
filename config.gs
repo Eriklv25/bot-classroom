@@ -76,6 +76,128 @@ const TASK_RULES = [
     promptType: "visual_structure",
     validGrade: 100,
     invalidGrade: 60
+  },
+  // Sustituye cada ID_PDF_* por el ID del documento de referencia en Drive
+  // y activa la regla cuando este lista para evaluarse.
+  {
+    enabled: false,
+    title: "Evidencia de Instrumentación Didáctica",
+    exampleFileId: "ID_PDF_INSTRUMENTACION_DIDACTICA",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia de Socializar la Instrumentación Didáctica",
+    exampleFileId: "ID_PDF_SOCIALIZAR_INSTRUMENTACION_DIDACTICA",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evaluación diagnóstica",
+    exampleFileId: "ID_PDF_EVALUACION_DIAGNOSTICA",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia pase de lista primer parcial",
+    exampleFileId: "ID_PDF_PASE_LISTA_PRIMER_PARCIAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia de Primer Parcial",
+    exampleFileId: "ID_PDF_PRIMER_PARCIAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia pase de lista segundo parcial",
+    exampleFileId: "ID_PDF_PASE_LISTA_SEGUNDO_PARCIAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia del Segundo Parcial",
+    exampleFileId: "ID_PDF_SEGUNDO_PARCIAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia pase de lista tercer parcial",
+    exampleFileId: "ID_PDF_PASE_LISTA_TERCER_PARCIAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia del Tercer Parcial",
+    exampleFileId: "ID_PDF_TERCER_PARCIAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia pase de lista cuarto parcial",
+    exampleFileId: "ID_PDF_PASE_LISTA_CUARTO_PARCIAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evidencia del Cuarto parcial",
+    exampleFileId: "ID_PDF_CUARTO_PARCIAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evaluación Departamental",
+    exampleFileId: "ID_PDF_EVALUACION_DEPARTAMENTAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Evaluación Docente",
+    exampleFileId: "ID_PDF_EVALUACION_DOCENTE",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "Reporte Final",
+    exampleFileId: "ID_PDF_REPORTE_FINAL",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
+  },
+  {
+    enabled: false,
+    title: "ACTAS FINALES de calificaciones",
+    exampleFileId: "ID_PDF_ACTAS_FINALES",
+    promptType: "visual_structure",
+    validGrade: 100,
+    invalidGrade: 60
   }
 ];
 
@@ -115,8 +237,7 @@ const COURSE_WORK_CREATION_CONFIGS = [
  * 1. Ajusta los datos de course.
  * 2. Agrega correos de profesores en teachers.
  * 3. Ajusta topics y courseWork.
- * 4. Ejecuta createNewCourseFromTemplate para crear todo, o usa
- *    createSelectedCourseWorkFromTemplate para crear una sola tarea.
+ * 4. Ejecuta createNewCourseFromTemplate para crear todo.
  * 5. Copia el courseId creado en existingCourseId para continuar ajustes sin crear otro curso.
  */
 const COURSE_SETUP_TEMPLATE = {
@@ -143,7 +264,6 @@ const COURSE_SETUP_TEMPLATE = {
   skipExistingCourseWork: true,
   defaultState: "DRAFT",
   defaultMaxPoints: 100,
-  selectedCourseWorkTitle: "Evidencia de Instrumentación Didáctica",
   topics: [
     { name: "INICIO DEL CURSO" },
     { name: "CURSO" },
