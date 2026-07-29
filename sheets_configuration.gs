@@ -17,6 +17,13 @@ const CONFIG_SHEET_NAMES = {
   TEMPLATE_WORK: "Tareas de plantilla"
 };
 
+const COURSE_EXECUTION_CONTROL = {
+  CHECKBOX: "B5",
+  STATUS: "B7",
+  LAST_RUN: "B8",
+  RESULT: "B9"
+};
+
 /**
  * Crea la hoja editable en Mi unidad y devuelve su enlace.
  * Si ya existe una hoja configurada, devuelve la misma en vez de duplicarla.
@@ -26,12 +33,17 @@ function createConfigurationSpreadsheet() {
     PROPERTY_KEYS.CONFIG_SPREADSHEET_ID
   );
   if (existingId) {
+    let existingSpreadsheet = null;
     try {
-      const existingSpreadsheet = SpreadsheetApp.openById(existingId);
-      logConfigurationSpreadsheetLink_(existingSpreadsheet, "Hoja de configuracion existente");
-      return existingSpreadsheet.getUrl();
+      existingSpreadsheet = SpreadsheetApp.openById(existingId);
     } catch (error) {
       console.log("La hoja configurada anteriormente ya no es accesible; se creara una nueva.");
+    }
+    if (existingSpreadsheet) {
+      writeHomeSheet_(getOrCreateSheet_(existingSpreadsheet, CONFIG_SHEET_NAMES.HOME), existingSpreadsheet);
+      ensureCourseConfigurationTrigger_(existingSpreadsheet);
+      logConfigurationSpreadsheetLink_(existingSpreadsheet, "Hoja de configuracion existente");
+      return existingSpreadsheet.getUrl();
     }
   }
 
@@ -40,6 +52,7 @@ function createConfigurationSpreadsheet() {
   firstSheet.setName(CONFIG_SHEET_NAMES.HOME);
 
   writeConfigurationSpreadsheet_(spreadsheet);
+  ensureCourseConfigurationTrigger_(spreadsheet);
   moveSpreadsheetToConfiguredFolder_(spreadsheet);
   PropertiesService.getScriptProperties().setProperty(
     PROPERTY_KEYS.CONFIG_SPREADSHEET_ID,
@@ -53,6 +66,109 @@ function createConfigurationSpreadsheet() {
 /** Alias en español visible en el selector de funciones de Apps Script. */
 function crearHojaDeConfiguracion() {
   return createConfigurationSpreadsheet();
+}
+
+/**
+ * Unico punto de entrada que necesita el usuario en Apps Script.
+ * Crea (o abre) la hoja desde la que se crea y se mantiene un curso.
+ */
+function crearHojaDeCurso() {
+  return createConfigurationSpreadsheet();
+}
+
+/**
+ * Ejecuta la configuracion de la hoja. Tambien es el handler del checkbox
+ * EJECUTAR de INICIO, mediante un trigger instalable y autorizado.
+ */
+function ejecutarCambiosDelCurso(event) {
+  if (event && !isCourseExecutionEdit_(event)) return null;
+
+  const spreadsheet = event && event.source
+    ? event.source
+    : getConfigurationSpreadsheet_();
+  const home = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.HOME);
+  if (event) home.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).setValue(false);
+
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(1000)) {
+    setCourseExecutionStatus_(home, "OCUPADO", "Ya hay otra ejecucion en curso.");
+    return null;
+  }
+
+  try {
+    setCourseExecutionStatus_(home, "EJECUTANDO", "Leyendo la configuracion...");
+    loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
+    const template = COURSE_SETUP_TEMPLATE;
+    let courseId = String(template.existingCourseId || template.courseId || "").trim();
+    let course;
+    let created = false;
+
+    if (!courseId) {
+      course = createClassroomCourseFromConfig(template.course);
+      courseId = String(course.id);
+      created = true;
+      saveCreatedCourseToSpreadsheet_(spreadsheet, course);
+    } else {
+      course = updateClassroomCourseFromConfig(courseId, template.course);
+    }
+
+    const setup = createCourseSetupFromTemplate(Object.assign({}, template, { courseId: courseId }));
+    const invitations = inviteStudentsFromTemplate(courseId, template.students || []);
+    registerCourseSpreadsheet_(courseId, spreadsheet);
+    setCourseExecutionStatus_(
+      home,
+      "COMPLETADO",
+      (created ? "Curso creado" : "Curso actualizado") + ": " + (course.name || template.course.name) + " (" + courseId + ")"
+    );
+    return { course: course, created: created, setup: setup, studentInvitations: invitations };
+  } catch (error) {
+    setCourseExecutionStatus_(home, "ERROR", errorToPlainText(error));
+    throw error;
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function isCourseExecutionEdit_(event) {
+  if (!event || !event.range || event.value !== "TRUE") return false;
+  return event.range.getSheet().getName() === CONFIG_SHEET_NAMES.HOME &&
+    event.range.getA1Notation() === COURSE_EXECUTION_CONTROL.CHECKBOX;
+}
+
+function ensureCourseConfigurationTrigger_(spreadsheet) {
+  const handler = "ejecutarCambiosDelCurso";
+  const spreadsheetId = spreadsheet.getId();
+  const exists = ScriptApp.getProjectTriggers().some(function (trigger) {
+    return trigger.getHandlerFunction() === handler && trigger.getTriggerSourceId() === spreadsheetId;
+  });
+  if (!exists) ScriptApp.newTrigger(handler).forSpreadsheet(spreadsheet).onEdit().create();
+}
+
+function setCourseExecutionStatus_(home, status, result) {
+  home.getRange(COURSE_EXECUTION_CONTROL.STATUS).setValue(status);
+  home.getRange(COURSE_EXECUTION_CONTROL.LAST_RUN).setValue(new Date()).setNumberFormat("yyyy-mm-dd hh:mm:ss");
+  home.getRange(COURSE_EXECUTION_CONTROL.RESULT).setValue(result || "");
+  SpreadsheetApp.flush();
+}
+
+function saveCreatedCourseToSpreadsheet_(spreadsheet, course) {
+  const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  const values = templateSheet.getDataRange().getValues();
+  values.slice(1).forEach(function (row, index) {
+    if (row[0] === "existingCourseId") templateSheet.getRange(index + 2, 2).setValue(String(course.id));
+    if (row[0] === "createNewCourse") templateSheet.getRange(index + 2, 2).setValue(false);
+  });
+
+  const coursesSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.COURSES);
+  const headers = coursesSheet.getRange(1, 1, 1, coursesSheet.getLastColumn()).getValues()[0];
+  const courseIdColumn = headers.indexOf("courseId") + 1;
+  if (courseIdColumn) coursesSheet.getRange(2, courseIdColumn).setValue(String(course.id));
+}
+
+function registerCourseSpreadsheet_(courseId, spreadsheet) {
+  const registry = getCourseSpreadsheetRegistry_();
+  registry[String(courseId)] = spreadsheet.getId();
+  saveCourseSpreadsheetRegistry_(registry);
 }
 
 /** Define la carpeta de Drive para las hojas que se creen despues. */
@@ -156,12 +272,16 @@ function loadConfigurationFromSpreadsheet(loadAllCourseSpreadsheets) {
   }
 
   const spreadsheet = SpreadsheetApp.openById(propertyValue);
+  loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
+  return true;
+}
+
+function loadConfigurationFromSpecificSpreadsheet_(spreadsheet) {
   applyGeneralConfiguration_(readObjectRows_(spreadsheet, CONFIG_SHEET_NAMES.GENERAL));
   replaceArray_(COURSE_CONFIGS, readTable_(spreadsheet, CONFIG_SHEET_NAMES.COURSES));
   replaceArray_(TASK_RULES, readTable_(spreadsheet, CONFIG_SHEET_NAMES.TASK_RULES));
   replaceArray_(COURSE_WORK_CREATION_CONFIGS, readCreationRows_(spreadsheet));
   applyCourseTemplate_(spreadsheet);
-  return true;
 }
 
 function getCourseSpreadsheetRegistry_() {
@@ -208,26 +328,30 @@ function writeConfigurationSpreadsheet_(spreadsheet) {
 
 function writeHomeSheet_(sheet, spreadsheet) {
   const rows = [
-    ["CONFIGURACION DEL BOT CLASSROOM", ""],
-    ["1", "Edita los valores en las pestañas de este archivo."],
-    ["2", "No cambies los nombres de las pestañas ni los encabezados."],
-    ["3", "No necesitas guardar: Google Sheets guarda automaticamente."],
-    ["4", "Ejecuta el bot normalmente; siempre leera los valores mas recientes."],
-    ["Ubicacion", "Este archivo esta en Mi unidad de Google Drive."],
+    ["CONFIGURACION DEL CURSO EN CLASSROOM", ""],
+    ["1. CONFIGURA", "Edita Plantilla del curso, Participantes, Temas, Tareas de plantilla y las opciones del bot."],
+    ["2. GUARDA", "No tienes que guardar: Google Sheets conserva los cambios automaticamente."],
+    ["3. APLICA", "Marca la casilla EJECUTAR. La primera vez crea el curso; despues actualiza la misma configuracion."],
+    ["EJECUTAR", false],
+    ["Aviso", "No cambies los nombres de las pestañas, encabezados ni campos de la primera columna."],
+    ["Estado", "LISTO"],
+    ["Ultima ejecucion", ""],
+    ["Resultado", "Aun no se han enviado cambios a Classroom."],
     ["Enlace", spreadsheet.getUrl()],
     ["Seguridad", "OPENAI_API_KEY permanece en Script Properties y no aparece aqui."],
-    ["Formatos", "Fechas: AAAA-MM-DD. Horas: HH:MM."],
-    ["Ayuda", "La pestaña General explica los valores principales en su tercera columna."]
+    ["Formatos", "Fechas: AAAA-MM-DD. Horas: HH:MM."]
   ];
   replaceSheetValues_(sheet, rows);
   sheet.setFrozenRows(1);
   sheet.getRange("A1:B1").merge().setBackground("#1a73e8").setFontColor("#ffffff")
     .setFontWeight("bold").setFontSize(14).setHorizontalAlignment("center");
-  sheet.getRange("A2:A10").setFontWeight("bold").setBackground("#e8f0fe");
-  sheet.getRange("B7").setFormula('=HYPERLINK("' + spreadsheet.getUrl() + '","ABRIR ESTA HOJA")');
+  sheet.getRange("A2:A12").setFontWeight("bold").setBackground("#e8f0fe");
+  sheet.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).insertCheckboxes().setBackground("#34a853");
+  sheet.getRange("A5:B5").setFontWeight("bold").setFontSize(13).setBorder(true, true, true, true, true, true);
+  sheet.getRange("B10").setFormula('=HYPERLINK("' + spreadsheet.getUrl() + '","ABRIR ESTA HOJA")');
   sheet.setColumnWidth(1, 130);
   sheet.setColumnWidth(2, 620);
-  sheet.getRange("A1:B10").setWrap(true).setVerticalAlignment("middle");
+  sheet.getRange("A1:B12").setWrap(true).setVerticalAlignment("middle");
   sheet.setRowHeight(1, 36);
 }
 

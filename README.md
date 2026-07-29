@@ -49,50 +49,35 @@ del archivo de credenciales actualizado. Nunca confirmes ese archivo en Git.
 - Activa `DRY_RUN` para la primera prueba y revisa los registros antes de
   permitir que el bot escriba calificaciones.
 
-## Interfaz de configuración en Google Sheets
+## Una sola función y una sola hoja por curso
 
-Ya no es necesario editar los arreglos de `config.gs` para el uso cotidiano:
+El flujo cotidiano se realiza desde una única hoja; no hace falta volver al
+selector de funciones de Apps Script después de crearla:
 
-1. Despliega esta version y, en el editor de Apps Script, selecciona la funcion
-   `crearHojaDeConfiguracion` en la lista superior y pulsa **Ejecutar**. Acepta
-   los permisos de Google la primera vez.
-2. La hoja se crea en **Google Drive > Mi unidad** con el nombre
-   **Configuracion - Bot Classroom**. Al terminar la ejecucion, copia la URL
-   mostrada en **Registro de ejecucion** y abre esa direccion. Si cerraste el
-   registro, ejecuta `verEnlaceHojaDeConfiguracion` para volver a mostrarla.
-   Ejecutar nuevamente `crearHojaDeConfiguracion` tambien devuelve la hoja ya
-   existente y no crea duplicados.
-3. La primera pestaña, **INICIO**, vuelve a explicar la mecanica dentro del
-   propio archivo. Configura las pestañas **General**,
-   **Cursos**, **Reglas de tareas**, **Crear tareas**, **Plantilla del curso**,
-   **Participantes**, **Temas** y **Tareas de plantilla**.
-4. Usa las casillas para activar opciones y filas. En fechas escribe
-   `AAAA-MM-DD`; en horas, `HH:MM`; y no cambies los encabezados.
-5. No hay boton **Guardar**: Google Sheets guarda los cambios automaticamente.
-   Ejecuta normalmente el bot o las funciones de creacion. La configuracion se
-   lee de la hoja al inicio de cada operacion, por lo que no hay que volver a
-   desplegar al cambiar valores.
+1. En Apps Script ejecuta una sola vez **`crearHojaDeCurso`** y concede los
+   permisos solicitados. La función crea **Configuracion - Bot Classroom** en Mi
+   unidad (o devuelve la hoja existente) y deja su URL en el registro.
+2. Configura el curso en **Plantilla del curso** y completa **Participantes**,
+   **Temas** y **Tareas de plantilla**. Las pestañas **General**, **Cursos**,
+   **Reglas de tareas** y **Crear tareas** contienen las opciones posteriores
+   del bot.
+3. Vuelve a **INICIO** y marca la casilla verde **EJECUTAR**. La primera
+   ejecución crea el curso, sus temas, tareas e invitaciones. El ID generado se
+   escribe automáticamente en la misma hoja para impedir cursos duplicados.
+4. Para modificar el curso, edita esa misma hoja y vuelve a marcar
+   **EJECUTAR**. Se actualizan los datos generales del curso y las tareas que ya
+   coincidan por título; también se crean los temas, tareas e invitaciones
+   nuevas. El estado, la fecha y el resultado de cada ejecución aparecen en
+   **INICIO**.
+
+Google Sheets guarda cada edición automáticamente. No cambies nombres de
+pestañas, encabezados ni los nombres de campo de la primera columna. Usa
+`AAAA-MM-DD` para fechas y `HH:MM` para horas. Por seguridad, el flujo no elimina
+automáticamente participantes, temas ni tareas que quites de la hoja.
 
 La clave `OPENAI_API_KEY` sigue exclusivamente en Script Properties y nunca se
-copia a Sheets. `resetConfigurationSpreadsheetFromCode` restaura todas las
-pestañas desde los valores predeterminados del codigo y **sobrescribe los datos
-de la hoja**, por lo que debe usarse con precaucion.
-
-### Una hoja independiente por curso
-
-- `createNewCourseFromTemplate` crea y registra automaticamente una hoja
-  **Configuracion - Nombre del curso**. Las reglas de esa hoja quedan ligadas a
-  su `courseId`, por lo que no cambian el comportamiento de otros cursos.
-- Para un curso que ya existe, ejecuta
-  `crearHojaDeConfiguracionParaCurso(courseId, courseName)`. Si ya esta
-  registrado, devuelve la hoja existente en lugar de crear un duplicado.
-- Para elegir la ubicacion, ejecuta primero
-  `configurarCarpetaDeHojas(folderIdOrUrl)` con el ID o la URL de una carpeta de
-  Drive. `configurarCarpetaDeHojas("")` hace que las hojas nuevas vuelvan a
-  guardarse en **Mi unidad**.
-- Durante la revision por lotes, el bot lee todas las hojas por curso
-  registradas. La hoja general anterior sigue funcionando mientras no existan
-  hojas por curso.
+copia a Sheets. La compatibilidad con las funciones anteriores se conserva,
+pero ya no son necesarias para este flujo.
 
 ## Preparacion de un curso desde la plantilla
 
