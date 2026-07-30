@@ -43,6 +43,33 @@ function createConfigurationSpreadsheet() {
 function crearHojaDeCurso() { return createConfigurationSpreadsheet(); }
 function crearHojaDeConfiguracion() { return createConfigurationSpreadsheet(); }
 
+/** Agrega acciones guiadas cada vez que se abre la hoja. */
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu("Bot Classroom")
+    .addItem("Elegir carpeta de almacenamiento", "elegirCarpetaDeAlmacenamiento")
+    .addToUi();
+}
+
+/** Solicita la URL de una carpeta de Drive y la guarda en la plantilla activa. */
+function elegirCarpetaDeAlmacenamiento() {
+  const ui = SpreadsheetApp.getUi();
+  const response = ui.prompt(
+    "Elegir carpeta de almacenamiento",
+    "Abre la carpeta deseada en Google Drive, copia su URL completa y pegala aqui.",
+    ui.ButtonSet.OK_CANCEL
+  );
+  if (response.getSelectedButton() !== ui.Button.OK) return null;
+
+  const folderUrl = String(response.getResponseText() || "").trim();
+  const folderId = extractDriveId_(folderUrl);
+  const folder = DriveApp.getFolderById(folderId);
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const fieldRange = findTemplateFieldRange_(spreadsheet, "carpetaAlmacenamiento");
+  fieldRange.setValue(folderUrl).setNote("Carpeta seleccionada: " + folder.getName());
+  spreadsheet.toast("Carpeta seleccionada: " + folder.getName(), "Bot Classroom", 5);
+  return folderId;
+}
+
 /** Atiende el boton principal y el boton CREAR AHORA de cada fila de Tareas. */
 function ejecutarCambiosDelCurso(event) {
   if (event && !isCourseExecutionEdit_(event) && !isTaskCreationEdit_(event)) return null;
@@ -71,6 +98,7 @@ function ejecutarCambiosDelCurso(event) {
     } else {
       course = updateClassroomCourseFromConfig(courseId, template.course);
     }
+    syncCourseSpreadsheetFile_(spreadsheet, course, readTemplateFields_(spreadsheet).carpetaAlmacenamiento);
     const setup = createCourseSetupFromTemplate(Object.assign({}, template, { courseId: courseId }));
     const invitations = inviteStudentsFromTemplate(courseId, template.students || []);
     registerCourseSpreadsheet_(courseId, spreadsheet);
@@ -116,6 +144,26 @@ function saveCreatedCourseToSpreadsheet_(spreadsheet, course) {
   values.forEach(function (row, index) {
     if (row[0] === "existingCourseId") sheet.getRange(index + 1, 2).setValue(String(course.id));
   });
+  SpreadsheetApp.flush();
+}
+
+function findTemplateFieldRange_(spreadsheet, fieldName) {
+  const sheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  const values = sheet.getDataRange().getValues();
+  for (let index = COURSE_EXECUTION_CONTROL.FIELDS_HEADER_ROW - 1; index < values.length; index++) {
+    if (String(values[index][0] || "").trim() === fieldName) return sheet.getRange(index + 1, 2);
+  }
+  throw new Error("Falta el campo de configuracion: " + fieldName);
+}
+
+/** Identifica el archivo con el curso y lo mueve a la carpeta elegida en la plantilla. */
+function syncCourseSpreadsheetFile_(spreadsheet, course, folderIdOrUrl) {
+  const courseName = String(course && course.name || "").trim();
+  if (!courseName) throw new Error("El curso no tiene un nombre valido para identificar la hoja.");
+  spreadsheet.rename(courseName);
+  if (String(folderIdOrUrl || "").trim()) {
+    moveSpreadsheetToConfiguredFolder_(spreadsheet, folderIdOrUrl);
+  }
 }
 
 function registerCourseSpreadsheet_(courseId, spreadsheet) {
@@ -202,7 +250,7 @@ function writeTemplateSheet_(sheet) {
     ["PLANTILLA DE CURSO", ""],
     ["1. CONFIGURA", "Completa esta pestaña, Participantes y Tareas."],
     ["2. GUARDA", "Google Sheets guarda automaticamente."],
-    ["3. APLICA", "Marca EJECUTAR para crear o actualizar el curso completo."],
+    ["3. APLICA", "Opcional: Bot Classroom > Elegir carpeta. Despues marca EJECUTAR."],
     ["EJECUTAR", false], ["Aviso", "No cambies pestañas, encabezados ni nombres de campo."],
     ["Estado", "LISTO"], ["Ultima ejecucion", ""], ["Resultado", "Sin cambios enviados."], ["", ""],
     ["Campo", "Valor"],
@@ -211,13 +259,15 @@ function writeTemplateSheet_(sheet) {
     ["courseDescription", template.course.description], ["room", template.course.room],
     ["ownerId", template.course.ownerId], ["courseState", template.course.courseState],
     ["skipExistingCourseWork", template.skipExistingCourseWork], ["defaultState", template.defaultState],
-    ["defaultMaxPoints", template.defaultMaxPoints]
+    ["defaultMaxPoints", template.defaultMaxPoints],
+    ["carpetaAlmacenamiento", ""]
   ];
   replaceSheetValues_(sheet, rows);
   sheet.getRange("A1:B1").merge().setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).insertCheckboxes().setBackground("#34a853");
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
+  sheet.getRange("B23").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
   sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 620); sheet.getDataRange().setWrap(true);
 }
 

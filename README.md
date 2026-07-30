@@ -60,9 +60,15 @@ selector de funciones de Apps Script después de crearla:
 2. Configura los datos generales en **Plantilla de curso**, selecciona las
    personas en **Participantes** y administra toda la configuración de cada
    actividad en **Tareas**. No existen otras pestañas de configuración.
-3. En **Plantilla de curso** marca la casilla verde **EJECUTAR**. La primera
-   ejecución crea el curso, sus temas, tareas e invitaciones. El ID generado se
-   escribe automáticamente en la misma hoja para impedir cursos duplicados.
+3. En **Plantilla de curso**, abre el menú **Bot Classroom > Elegir carpeta de
+   almacenamiento**. Abre en Google Drive la carpeta deseada, copia su URL y
+   pégala en el cuadro; el bot completará `carpetaAlmacenamiento`. También
+   puedes pegar directamente ahí el ID o la URL, o dejarlo vacío para conservar
+   el archivo en su ubicación actual. Después marca la casilla verde
+   **EJECUTAR**. La primera ejecución crea el curso, sus temas, tareas e
+   invitaciones. El ID generado se escribe automáticamente en la misma hoja
+   para impedir cursos duplicados, el archivo se renombra con el nombre del
+   curso y se mueve a la carpeta elegida.
 4. Para modificar el curso, edita esa misma hoja y vuelve a marcar
    **EJECUTAR**. Se actualizan los datos generales del curso y las tareas que ya
    coincidan por título; también se crean los temas, tareas e invitaciones
