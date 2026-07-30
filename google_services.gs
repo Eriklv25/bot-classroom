@@ -285,7 +285,7 @@ function createNewCourseFromTemplate() {
 
   const setupSummary = createCourseSetupFromTemplate(setupTemplate);
   const invitationSummary = inviteStudentsFromTemplate(course.id, template.students || []);
-  const configurationSpreadsheetUrl = crearHojaDeConfiguracionParaCurso(course.id, course.name);
+  const configurationSpreadsheetUrl = crearConfiguracionParaCursoExistente_(course.id, course.name);
 
   const summary = {
     course: {
@@ -420,7 +420,8 @@ function createCourseSetupFromTemplate(template) {
     }
 
     const existing = courseWorkMap[normalizeSetupName(workConfig.title)];
-    if (template.skipExistingCourseWork !== false && existing) {
+    // El titulo es la identidad estable: nunca se crea una segunda tarea con el mismo nombre.
+    if (existing) {
       const topicId = getOrCreateTopicIdByName(courseId, workConfig.topicName, topicMap);
       const updated = updateCourseWorkFromConfig(courseId, existing.id, {
         title: workConfig.title,
@@ -661,8 +662,8 @@ function getTeacherInvitationStatus(courseId, teacherEmails) {
  * Devuelve: resumen de correos enviados.
  * Se usa: manualmente o por trigger para seguimiento de invitaciones.
  */
-function sendTeacherInvitationRemindersFromTemplate() {
-  loadConfigurationFromSpreadsheet();
+function sendTeacherInvitationRemindersFromTemplate(skipConfigurationLoad) {
+  if (skipConfigurationLoad !== true) loadConfigurationFromSpreadsheet();
   const courseId = COURSE_SETUP_TEMPLATE.existingCourseId || COURSE_SETUP_TEMPLATE.courseId;
   if (!courseId) {
     throw new Error("Falta COURSE_SETUP_TEMPLATE.existingCourseId para revisar invitaciones.");
@@ -673,7 +674,10 @@ function sendTeacherInvitationRemindersFromTemplate() {
     throw new Error("teacherInvitationReminder.enabled esta en false.");
   }
 
-  const status = getTeacherInvitationStatus(courseId, COURSE_SETUP_TEMPLATE.teachers || []);
+  const selectedEmails = (COURSE_SETUP_TEMPLATE.students || []).filter(function (participant) {
+    return participant && participant.selected === true;
+  }).map(function (participant) { return participant.email; });
+  const status = getParticipantInvitationStatus_(courseId, selectedEmails);
   const course = Classroom.Courses.get(courseId);
   const recipients = status.pending.concat(status.missingInvitation);
   const summary = {
@@ -703,6 +707,95 @@ function sendTeacherInvitationRemindersFromTemplate() {
 
   console.log("Resumen de recordatorios de profesores: " + JSON.stringify(summary));
   return summary;
+}
+
+/** Identifica participantes invitados como alumnos que todavia no aceptan el curso. */
+function getParticipantInvitationStatus_(courseId, emails) {
+  const accepted = {};
+  let pageToken = null;
+  do {
+    const response = Classroom.Courses.Students.list(courseId, { pageSize: 100, pageToken: pageToken });
+    (response.students || []).forEach(function (student) {
+      const email = student.profile && student.profile.emailAddress;
+      if (email) accepted[String(email).toLowerCase()] = true;
+    });
+    pageToken = response.nextPageToken || null;
+  } while (pageToken);
+  const invited = {};
+  listInvitationsForCourse(courseId).forEach(function (invitation) {
+    if (invitation.userId) invited[String(invitation.userId).toLowerCase()] = true;
+  });
+  const status = { courseId: courseId, accepted: [], pending: [], missingInvitation: [] };
+  (emails || []).forEach(function (email) {
+    const clean = String(email || "").trim().toLowerCase();
+    if (!clean) return;
+    if (accepted[clean]) status.accepted.push(clean);
+    else if (invited[clean]) status.pending.push(clean);
+    else status.missingInvitation.push(clean);
+  });
+  return status;
+}
+
+/** Punto de entrada horario para todos los recordatorios configurados en la hoja. */
+function procesarRecordatoriosProgramados() {
+  loadConfigurationFromSpreadsheet(true);
+  const summary = { invitations: [], pendingActivities: null };
+  const registry = getCourseSpreadsheetRegistry_();
+  Object.keys(registry).forEach(function (courseId) {
+    const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
+    loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
+    const config = COURSE_SETUP_TEMPLATE.teacherInvitationReminder || {};
+    if (config.enabled !== false && isScheduledReminderDue_("invitaciones:" + courseId, config.everyDays, config.hour)) {
+      summary.invitations.push(sendTeacherInvitationRemindersFromTemplate(true));
+      markScheduledReminderSent_("invitaciones:" + courseId);
+    }
+    const pendingConfig = COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {};
+    if (pendingConfig.enabled !== false && isScheduledReminderDue_("pendientes:" + courseId, pendingConfig.everyDays, pendingConfig.hour)) {
+      summary["pendingActivities:" + courseId] = sendPendingActivitiesSummary_(courseId);
+      markScheduledReminderSent_("pendientes:" + courseId);
+    }
+  });
+  // El lote agrupa las actividades pendientes por tarea y respeta la frecuencia de cada fila.
+  summary.pendingActivities = processPendingSubmissionsBatch();
+  return summary;
+}
+
+/** Envia a cada participante un solo correo con sus actividades aun sin entregar. */
+function sendPendingActivitiesSummary_(courseId) {
+  const pendingByEmail = {};
+  listCourseWorkForSetup(courseId).forEach(function (work) {
+    if (work.state !== "PUBLISHED" || work.workType !== "ASSIGNMENT") return;
+    listStudentSubmissions(courseId, work.id).forEach(function (submission) {
+      if (submission.state !== "NEW" && submission.state !== "CREATED") return;
+      const email = getEmailForSubmission(submission);
+      if (!email) return;
+      if (!pendingByEmail[email]) pendingByEmail[email] = [];
+      pendingByEmail[email].push(work.title);
+    });
+  });
+  const course = Classroom.Courses.get(courseId);
+  const sent = [];
+  Object.keys(pendingByEmail).forEach(function (email) {
+    MailApp.sendEmail({
+      to: email,
+      subject: "Actividades pendientes: " + (course.name || courseId),
+      body: ["Hola.", "", "Estas actividades siguen pendientes:", "- " + pendingByEmail[email].join("\n- "), "", "Revisa el curso en Google Classroom."].join("\n")
+    });
+    sent.push({ email: email, activities: pendingByEmail[email].length });
+  });
+  return sent;
+}
+
+function isScheduledReminderDue_(key, everyDays, hour) {
+  const configuredHour = String(hour || "09:00").split(":");
+  const now = new Date();
+  if (now.getHours() !== Number(configuredHour[0])) return false;
+  const last = Number(PropertiesService.getScriptProperties().getProperty("REMINDER_SENT:" + key) || 0);
+  return !last || now.getTime() - last >= Number(everyDays || 1) * 24 * 60 * 60 * 1000;
+}
+
+function markScheduledReminderSent_(key) {
+  PropertiesService.getScriptProperties().setProperty("REMINDER_SENT:" + key, String(new Date().getTime()));
 }
 
 /**
@@ -1429,8 +1522,11 @@ function sendPendingSubmissionNotifications(taskConfig, courseWork, submissions)
       return;
     }
 
-    if (CONFIG.ENABLE_REMINDERS && isCourseWorkDueWithinReminderWindow(courseWork)) {
+    const reminderKey = "tarea:" + taskConfig.courseId + ":" + taskConfig.courseWorkId + ":" + submission.userId;
+    if (CONFIG.ENABLE_REMINDERS && getCourseWorkDueDate(courseWork) &&
+        isScheduledReminderDue_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour)) {
       sendDueSoonReminder(taskConfig, courseWork, submission);
+      markScheduledReminderSent_(reminderKey);
     }
   });
 }
