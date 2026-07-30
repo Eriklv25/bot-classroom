@@ -5,6 +5,10 @@ const CONFIG_SHEET_NAMES = {
   TASKS: "Tareas"
 };
 
+/** Zona horaria civil usada por todos los valores capturados en las hojas. */
+const COURSE_SHEET_TIME_ZONE = "America/Mexico_City";
+const REMINDER_TRIGGER_VERSION = "every-5-minutes-v1";
+
 const COURSE_EXECUTION_CONTROL = {
   CHECKBOX: "B5",
   STATUS: "B7",
@@ -78,6 +82,7 @@ function elegirCarpetaDeAlmacenamiento() {
 function ejecutarCambiosDelCurso(event) {
   if (event && !isCourseExecutionEdit_(event)) return null;
   const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
+  ensureCourseConfigurationTrigger_(spreadsheet);
   const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
   if (event) event.range.setValue(false);
   const lock = LockService.getScriptLock();
@@ -149,11 +154,19 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
   if (!hasTrigger("onOpen", ScriptApp.EventType.ON_OPEN)) {
     ScriptApp.newTrigger("onOpen").forSpreadsheet(spreadsheet).onOpen().create();
   }
-  if (!triggers.some(function (trigger) {
+  const properties = PropertiesService.getScriptProperties();
+  if (properties.getProperty("REMINDER_TRIGGER_VERSION") !== REMINDER_TRIGGER_VERSION) {
+    triggers.filter(function (trigger) {
+      return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
+        trigger.getEventType() === ScriptApp.EventType.CLOCK;
+    }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyMinutes(5).create();
+    properties.setProperty("REMINDER_TRIGGER_VERSION", REMINDER_TRIGGER_VERSION);
+  } else if (!triggers.some(function (trigger) {
     return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
       trigger.getEventType() === ScriptApp.EventType.CLOCK;
   })) {
-    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyHours(1).create();
+    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyMinutes(5).create();
   }
 }
 
@@ -338,7 +351,7 @@ function writeTemplateSheet_(sheet) {
     ["horaRecordatorioInvitacion", (template.teacherInvitationReminder || {}).hour || "09:00"],
     ["recordatorioPendientesCadaDias", (template.pendingActivitiesReminder || {}).everyDays || 2],
     ["horaRecordatorioPendientes", (template.pendingActivitiesReminder || {}).hour || "10:00"],
-    ["zonaHoraria", Session.getScriptTimeZone()],
+    ["zonaHoraria", COURSE_SHEET_TIME_ZONE],
     ["carpetaAlmacenamiento", ""]
   ];
   replaceSheetValues_(sheet, rows);
@@ -346,7 +359,7 @@ function writeTemplateSheet_(sheet) {
   sheet.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).insertCheckboxes().setBackground("#34a853");
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
-  sheet.getRange("B27").setNote("Zona horaria usada para todas las horas de esta hoja. Se configura en appsscript.json.");
+  sheet.getRange("B27").setNote("Zona horaria usada para todas las horas de esta hoja: Ciudad de Mexico.");
   sheet.getRange("B28").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
   sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 620); sheet.getDataRange().setWrap(true);
 }
