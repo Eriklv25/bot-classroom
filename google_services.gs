@@ -826,12 +826,16 @@ function isScheduledReminderDue_(key, everyDays, hour) {
   if (currentMinutes < scheduledMinutes) return false;
   const last = Number(PropertiesService.getScriptProperties().getProperty("REMINDER_SENT:" + key) || 0);
   if (!last) return true;
-  const intervalDays = Math.max(0, Number(everyDays) || 0);
-  if (intervalDays === 0) {
-    return Utilities.formatDate(new Date(last), COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd") !==
-      Utilities.formatDate(now, COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd");
-  }
-  return now.getTime() - last >= intervalDays * 24 * 60 * 60 * 1000;
+  const today = Utilities.formatDate(now, COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd");
+  const lastDay = Utilities.formatDate(new Date(last), COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd");
+  if (today === lastDay) return false;
+
+  // Se comparan dias civiles, no bloques moviles de 24 horas. Asi un trigger
+  // que se retrasa unos minutos no desplaza para siempre el siguiente correo.
+  const intervalDays = Math.max(1, Number(everyDays) || 1);
+  const todayNumber = Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, Number(today.slice(8, 10)));
+  const lastDayNumber = Date.UTC(Number(lastDay.slice(0, 4)), Number(lastDay.slice(5, 7)) - 1, Number(lastDay.slice(8, 10)));
+  return (todayNumber - lastDayNumber) / (24 * 60 * 60 * 1000) >= intervalDays;
 }
 
 function markScheduledReminderSent_(key) {
@@ -1575,16 +1579,18 @@ function sendPendingSubmissionNotifications(taskConfig, courseWork, submissions)
   }
 
   submissions.forEach(function (submission) {
+    const reminderKey = "tarea:" + taskConfig.courseId + ":" + taskConfig.courseWorkId + ":" + submission.userId;
     if (CONFIG.ENABLE_OVERDUE_NOTICES && isSubmissionOverdue(courseWork, submission)) {
-      sendOverdueReminder(taskConfig, courseWork, submission);
+      if (isScheduledReminderDue_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour) &&
+          sendOverdueReminder(taskConfig, courseWork, submission)) {
+        markScheduledReminderSent_(reminderKey);
+      }
       return;
     }
 
-    const reminderKey = "tarea:" + taskConfig.courseId + ":" + taskConfig.courseWorkId + ":" + submission.userId;
     if (CONFIG.ENABLE_REMINDERS && getCourseWorkDueDate(courseWork) &&
         isScheduledReminderDue_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour)) {
-      sendDueSoonReminder(taskConfig, courseWork, submission);
-      markScheduledReminderSent_(reminderKey);
+      if (sendDueSoonReminder(taskConfig, courseWork, submission)) markScheduledReminderSent_(reminderKey);
     }
   });
 }
@@ -1600,7 +1606,7 @@ function sendDueSoonReminder(taskConfig, courseWork, submission) {
   const email = getEmailForSubmission(submission);
   if (!email) {
     console.log("No se encontro correo para recordatorio de usuario " + submission.userId);
-    return;
+    return false;
   }
 
   MailApp.sendEmail({
@@ -1608,6 +1614,7 @@ function sendDueSoonReminder(taskConfig, courseWork, submission) {
     subject: "Recordatorio (24h): " + courseWork.title,
     body: buildDueSoonEmailBody(courseWork, submission)
   });
+  return true;
 }
 
 /**
@@ -1621,7 +1628,7 @@ function sendOverdueReminder(taskConfig, courseWork, submission) {
   const email = getEmailForSubmission(submission);
   if (!email) {
     console.log("No se encontro correo para aviso vencido de usuario " + submission.userId);
-    return;
+    return false;
   }
 
   MailApp.sendEmail({
@@ -1629,6 +1636,7 @@ function sendOverdueReminder(taskConfig, courseWork, submission) {
     subject: "Evidencia vencida: " + courseWork.title,
     body: buildOverdueEmailBody(courseWork, submission)
   });
+  return true;
 }
 
 /**
