@@ -774,19 +774,39 @@ function getParticipantInvitationStatus_(courseId, emails) {
 
 /** Punto de entrada periodico para todos los recordatorios configurados en la hoja. */
 function procesarRecordatoriosProgramados() {
+  const startedAt = new Date();
+  const runId = Utilities.getUuid().slice(0, 8);
+  const control = {
+    runId: runId,
+    startedMs: startedAt.getTime(),
+    deadlineMs: startedAt.getTime() + REMINDER_SAFE_RUNTIME_MS,
+    lastStage: "inicio"
+  };
   const lock = LockService.getScriptLock();
+  REMINDER_EMAIL_CACHE_ = {};
+  logReminderProgress_(control, "INICIO", { safeRuntimeMs: REMINDER_SAFE_RUNTIME_MS });
   if (!lock.tryLock(1000)) {
-    console.log("Otra ejecucion de recordatorios sigue activa. Se cancela esta corrida.");
-    return { skippedBecauseLocked: true, invitations: [], pendingActivities: null };
+    logReminderProgress_(control, "OMITIDA_LOCK", {
+      message: "Otra ejecucion posee el ScriptLock; esta invocacion termina sin esperar."
+    });
+    return { runId: runId, skippedBecauseLocked: true, invitations: [], pendingActivities: null };
   }
 
-  const summary = { invitations: [], pendingActivities: null, errors: [] };
+  const summary = { runId: runId, invitations: [], pendingActivities: null, errors: [], incomplete: false };
   let nextIntervalMinutes = DEFAULT_REMINDER_TRIGGER_MINUTES;
   try {
     const registry = getCourseSpreadsheetRegistry_();
+    logReminderProgress_(control, "REGISTRO_LEIDO", { courses: Object.keys(registry).length });
     nextIntervalMinutes = getShortestConfiguredReminderTriggerMinutes_();
-    Object.keys(registry).forEach(function (courseId) {
+    const courseIds = Object.keys(registry);
+    for (let courseIndex = 0; courseIndex < courseIds.length; courseIndex++) {
+      const courseId = courseIds[courseIndex];
+      if (!hasReminderTimeRemaining_(control, "curso:" + courseId)) {
+        summary.incomplete = true;
+        break;
+      }
       try {
+        logReminderProgress_(control, "CURSO_INICIO", { courseId: courseId, index: courseIndex + 1 });
         const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
         loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
         const config = COURSE_SETUP_TEMPLATE.teacherInvitationReminder || {};
@@ -798,23 +818,38 @@ function procesarRecordatoriosProgramados() {
         }
         const pendingConfig = COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {};
         if (pendingConfig.enabled !== false && isScheduledReminderDue_("pendientes:" + courseId, pendingConfig.everyDays, pendingConfig.hour)) {
-          summary["pendingActivities:" + courseId] = sendPendingActivitiesSummary_(courseId);
-          markScheduledReminderSent_("pendientes:" + courseId);
+          const pendingResult = sendPendingActivitiesSummary_(courseId, control);
+          summary["pendingActivities:" + courseId] = pendingResult;
+          if (!pendingResult.incomplete) markScheduledReminderSent_("pendientes:" + courseId);
+          else summary.incomplete = true;
         }
+        logReminderProgress_(control, "CURSO_FIN", { courseId: courseId });
       } catch (error) {
         const message = "No se pudo procesar recordatorios del curso " + courseId + ": " + errorToPlainText(error);
-        console.log(message);
+        logReminderProgress_(control, "CURSO_ERROR", { courseId: courseId, message: message, stack: error && error.stack || "" });
         summary.errors.push({ courseId: courseId, message: message });
       }
-    });
+    }
 
     // Los recordatorios no deben arrancar el lote de calificacion: ese lote
     // puede usar OpenAI y acercarse al limite de ejecucion. Aqui solo se listan
     // entregas sin enviar y se mandan las notificaciones que correspondan.
-    summary.pendingActivities = processScheduledTaskReminders_(summary.errors);
+    if (!summary.incomplete && hasReminderTimeRemaining_(control, "recordatorios_por_tarea")) {
+      summary.pendingActivities = processScheduledTaskReminders_(summary.errors, control);
+      summary.incomplete = summary.pendingActivities.incomplete;
+    }
+    logReminderProgress_(control, "FIN", summary);
     return summary;
+  } catch (error) {
+    logReminderProgress_(control, "ERROR_FATAL", {
+      lastStage: control.lastStage,
+      message: errorToPlainText(error),
+      stack: error && error.stack || ""
+    });
+    throw error;
   } finally {
     try {
+      logReminderProgress_(control, "PROGRAMANDO_SIGUIENTE", { intervalMinutes: nextIntervalMinutes });
       scheduleNextReminderRun_(nextIntervalMinutes);
     } finally {
       lock.releaseLock();
@@ -823,25 +858,47 @@ function procesarRecordatoriosProgramados() {
 }
 
 /** Recorre las tareas configuradas sin evaluar ni calificar entregas. */
-function processScheduledTaskReminders_(errors) {
+function processScheduledTaskReminders_(errors, control) {
   loadConfigurationFromSpreadsheet(true);
   const activeTasks = getActiveTaskConfigs();
-  const summary = { tasksChecked: 0, notificationsChecked: 0 };
-  activeTasks.forEach(function (taskConfig) {
+  const summary = { tasksChecked: 0, notificationsChecked: 0, incomplete: false };
+  for (let index = 0; index < activeTasks.length; index++) {
+    const taskConfig = activeTasks[index];
+    if (!hasReminderTimeRemaining_(control, "tarea:" + getTaskLabel(taskConfig))) {
+      summary.incomplete = true;
+      break;
+    }
     try {
+      logReminderProgress_(control, "TAREA_INICIO", { task: getTaskLabel(taskConfig), index: index + 1, total: activeTasks.length });
       const courseWork = getCourseWork(taskConfig.courseId, taskConfig.courseWorkId);
       const unsubmitted = getUnsubmittedSubmissionsForTask(taskConfig, courseWork);
       sendPendingSubmissionNotifications(taskConfig, courseWork, unsubmitted);
       summary.tasksChecked++;
       summary.notificationsChecked += unsubmitted.length;
+      logReminderProgress_(control, "TAREA_FIN", { task: getTaskLabel(taskConfig), unsubmitted: unsubmitted.length });
     } catch (error) {
       const message = "No se pudieron procesar recordatorios de " +
         getTaskLabel(taskConfig) + ": " + errorToPlainText(error);
-      console.log(message);
+      logReminderProgress_(control, "TAREA_ERROR", { message: message, stack: error && error.stack || "" });
       errors.push({ courseId: taskConfig.courseId, message: message });
     }
-  });
+  }
   return summary;
+}
+
+/** Escribe trazas compactas que permiten ubicar la llamada externa que se atoro. */
+function logReminderProgress_(control, stage, details) {
+  control.lastStage = stage;
+  console.log("[RECORDATORIOS][" + control.runId + "][" + stage + "][" +
+    (new Date().getTime() - control.startedMs) + "ms] " + JSON.stringify(details || {}));
+}
+
+/** Detiene trabajo nuevo con margen suficiente para ejecutar el bloque finally. */
+function hasReminderTimeRemaining_(control, nextStage) {
+  const remainingMs = control.deadlineMs - new Date().getTime();
+  if (remainingMs > 0) return true;
+  logReminderProgress_(control, "LIMITE_SEGURO", { nextStage: nextStage, remainingMs: remainingMs });
+  return false;
 }
 
 /** Obtiene las invitaciones pendientes de profesores sin enviar correos todavia. */
@@ -885,18 +942,36 @@ function sendTeacherInvitationRemindersForCourse_(course) {
 }
 
 /** Envia a cada participante un solo correo con sus actividades aun sin entregar. */
-function sendPendingActivitiesSummary_(courseId) {
+function sendPendingActivitiesSummary_(courseId, control) {
   const pendingByEmail = {};
-  listCourseWorkForSetup(courseId).forEach(function (work) {
-    if (work.state !== "PUBLISHED" || work.workType !== "ASSIGNMENT") return;
-    listStudentSubmissions(courseId, work.id).forEach(function (submission) {
-      if (submission.state !== "NEW" && submission.state !== "CREATED") return;
-      const email = getEmailForSubmission(submission);
-      if (!email) return;
+  const emailByUserId = {};
+  const works = listCourseWorkForSetup(courseId);
+  for (let workIndex = 0; workIndex < works.length; workIndex++) {
+    const work = works[workIndex];
+    if (work.state !== "PUBLISHED" || work.workType !== "ASSIGNMENT") continue;
+    if (!hasReminderTimeRemaining_(control, "resumen:" + courseId + ":" + work.id)) {
+      return { sent: [], incomplete: true, worksChecked: workIndex };
+    }
+    const submissions = listStudentSubmissions(courseId, work.id);
+    logReminderProgress_(control, "RESUMEN_ACTIVIDAD", {
+      courseId: courseId, workId: work.id, index: workIndex + 1,
+      total: works.length, submissions: submissions.length
+    });
+    for (let submissionIndex = 0; submissionIndex < submissions.length; submissionIndex++) {
+      const submission = submissions[submissionIndex];
+      if (submission.state !== "NEW" && submission.state !== "CREATED") continue;
+      if (!hasReminderTimeRemaining_(control, "perfil:" + submission.userId)) {
+        return { sent: [], incomplete: true, worksChecked: workIndex };
+      }
+      if (!Object.prototype.hasOwnProperty.call(emailByUserId, submission.userId)) {
+        emailByUserId[submission.userId] = getEmailForSubmission(submission);
+      }
+      const email = emailByUserId[submission.userId];
+      if (!email) continue;
       if (!pendingByEmail[email]) pendingByEmail[email] = [];
       pendingByEmail[email].push(work.title);
-    });
-  });
+    }
+  }
   const course = Classroom.Courses.get(courseId);
   const sent = [];
   Object.keys(pendingByEmail).forEach(function (email) {
@@ -907,7 +982,7 @@ function sendPendingActivitiesSummary_(courseId) {
     });
     sent.push({ email: email, activities: pendingByEmail[email].length });
   });
-  return sent;
+  return { sent: sent, incomplete: false, worksChecked: works.length };
 }
 
 function isScheduledReminderDue_(key, everyDays, hour) {
@@ -1812,9 +1887,19 @@ function sendBatchSummaryToTeacher(summary) {
  * Se usa: para recordatorios al estudiante.
  */
 function getEmailForSubmission(submission) {
+  const userId = String(submission && submission.userId || "");
+  if (Object.prototype.hasOwnProperty.call(REMINDER_EMAIL_CACHE_, userId)) {
+    return REMINDER_EMAIL_CACHE_[userId];
+  }
   const profile = getClassroomUserProfile(submission.userId);
-  return profile && profile.emailAddress ? profile.emailAddress : "";
+  const email = profile && profile.emailAddress ? profile.emailAddress : "";
+  REMINDER_EMAIL_CACHE_[userId] = email;
+  return email;
 }
+
+// El mismo alumno aparece en muchas actividades; evita una llamada de perfil
+// por cada entrega durante una misma ejecucion de Apps Script.
+var REMINDER_EMAIL_CACHE_ = {};
 
 /**
  * Indica si una entrega esta vencida.

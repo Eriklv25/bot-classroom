@@ -111,6 +111,16 @@ un profesor inscrito en varios cursos puede recibir un correo por cada curso
 pendiente. Si un curso fue eliminado o dejó de ser accesible, el error queda en
 el registro de ejecución y no impide procesar los demás cursos.
 
+Para diagnosticar una ejecución lenta, abre **Ejecuciones**, entra en la corrida
+y consulta los registros que empiezan con `[RECORDATORIOS]`. Todos incluyen un
+identificador de corrida, la etapa y los milisegundos transcurridos; las etapas
+`CURSO_INICIO`, `RESUMEN_ACTIVIDAD` y `TAREA_INICIO` permiten identificar el
+curso o actividad cuya llamada a Classroom se demoró. `CURSO_ERROR`,
+`TAREA_ERROR` y `ERROR_FATAL` incluyen el mensaje y la pila del error. El proceso
+deja de iniciar llamadas nuevas al llegar a su límite seguro, registra
+`LIMITE_SEGURO` y programa la siguiente corrida en vez de esperar a que Apps
+Script lo termine por tiempo máximo.
+
 Google Sheets guarda cada edición automáticamente. No cambies nombres de
 pestañas, encabezados ni los nombres de campo. Usa
 `AAAA-MM-DD` para fechas (por ejemplo, `2026-08-31`) y `HH:MM` en formato de 24
