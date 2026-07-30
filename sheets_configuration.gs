@@ -7,9 +7,12 @@ const CONFIG_SHEET_NAMES = {
 
 /** Zona horaria civil usada por todos los valores capturados en las hojas. */
 const COURSE_SHEET_TIME_ZONE = "America/Mexico_City";
-// El trigger solo despierta el proceso; isScheduledReminderDue_ decide si toca
-// enviar y garantiza que una misma clave no se repita durante el dia.
-const REMINDER_TRIGGER_VERSION = "hourly-v2";
+// Apps Script solo admite estos intervalos para triggers periodicos. El trigger
+// despierta el proceso; isScheduledReminderDue_ decide si toca enviar y evita
+// que una misma clave se repita durante el dia.
+const REMINDER_TRIGGER_INTERVALS_MINUTES = [1, 5, 10, 15, 30, 60, 120, 240, 360, 480, 720];
+const DEFAULT_REMINDER_TRIGGER_MINUTES = 60;
+const REMINDER_TRIGGER_PROPERTY = "REMINDER_TRIGGER_INTERVAL_MINUTES";
 
 const COURSE_EXECUTION_CONTROL = {
   CHECKBOX: "B5",
@@ -54,6 +57,10 @@ function crearHojaDeCurso() { return createConfigurationSpreadsheet(); }
 
 /** Agrega acciones guiadas cada vez que se abre la hoja. */
 function onOpen() {
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (spreadsheet && spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TEMPLATE)) {
+    ensureReminderTriggerField_(spreadsheet);
+  }
   SpreadsheetApp.getUi().createMenu("Bot Classroom")
     .addItem("Elegir carpeta de almacenamiento", "elegirCarpetaDeAlmacenamiento")
     .addItem("Listar hojas de cursos", "listarHojasDeCursos")
@@ -84,7 +91,7 @@ function elegirCarpetaDeAlmacenamiento() {
 function ejecutarCambiosDelCurso(event) {
   if (event && !isCourseExecutionEdit_(event)) return null;
   const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
-  ensureCourseConfigurationTrigger_(spreadsheet);
+  ensureReminderTriggerField_(spreadsheet);
   const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
   if (event) event.range.setValue(false);
   const lock = LockService.getScriptLock();
@@ -95,6 +102,7 @@ function ejecutarCambiosDelCurso(event) {
   try {
     setCourseExecutionStatus_(templateSheet, "EJECUTANDO", "Leyendo la configuracion...");
     loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
+    ensureCourseConfigurationTrigger_(spreadsheet);
     const template = COURSE_SETUP_TEMPLATE;
     const selectedTaskTitles = readTaskRows_(spreadsheet).filter(function (task) {
       return task.crearAhora === true;
@@ -156,20 +164,51 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
   if (!hasTrigger("onOpen", ScriptApp.EventType.ON_OPEN)) {
     ScriptApp.newTrigger("onOpen").forSpreadsheet(spreadsheet).onOpen().create();
   }
-  const properties = PropertiesService.getScriptProperties();
-  if (properties.getProperty("REMINDER_TRIGGER_VERSION") !== REMINDER_TRIGGER_VERSION) {
-    triggers.filter(function (trigger) {
-      return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
-        trigger.getEventType() === ScriptApp.EventType.CLOCK;
-    }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
-    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyHours(1).create();
-    properties.setProperty("REMINDER_TRIGGER_VERSION", REMINDER_TRIGGER_VERSION);
-  } else if (!triggers.some(function (trigger) {
+  const reminderTriggers = triggers.filter(function (trigger) {
     return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
       trigger.getEventType() === ScriptApp.EventType.CLOCK;
-  })) {
-    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyHours(1).create();
+  });
+  const intervalMinutes = getShortestConfiguredReminderTriggerMinutes_(spreadsheet);
+  const properties = PropertiesService.getScriptProperties();
+  const currentInterval = Number(properties.getProperty(REMINDER_TRIGGER_PROPERTY));
+  if (currentInterval !== intervalMinutes || reminderTriggers.length !== 1) {
+    reminderTriggers.forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+    createReminderClockTrigger_(intervalMinutes);
+    properties.setProperty(REMINDER_TRIGGER_PROPERTY, String(intervalMinutes));
   }
+}
+
+/** Crea el trigger usando exclusivamente las frecuencias admitidas por Apps Script. */
+function createReminderClockTrigger_(intervalMinutes) {
+  const builder = ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased();
+  if (intervalMinutes < 60) builder.everyMinutes(intervalMinutes).create();
+  else builder.everyHours(intervalMinutes / 60).create();
+}
+
+/** Usa la frecuencia mas corta para que una hoja no retrase a las demas. */
+function getShortestConfiguredReminderTriggerMinutes_(currentSpreadsheet) {
+  const spreadsheetIds = [];
+  const addId = function (id) {
+    if (id && spreadsheetIds.indexOf(id) === -1) spreadsheetIds.push(id);
+  };
+  if (currentSpreadsheet) addId(currentSpreadsheet.getId());
+  const registry = getCourseSpreadsheetRegistry_();
+  Object.keys(registry).forEach(function (courseId) { addId(registry[courseId]); });
+
+  const intervals = spreadsheetIds.map(function (spreadsheetId) {
+    try {
+      const spreadsheet = currentSpreadsheet && currentSpreadsheet.getId() === spreadsheetId
+        ? currentSpreadsheet : SpreadsheetApp.openById(spreadsheetId);
+      return normalizeReminderTriggerMinutes_(
+        readTemplateFields_(spreadsheet).intervaloTriggerRecordatoriosMinutos,
+        DEFAULT_REMINDER_TRIGGER_MINUTES
+      );
+    } catch (error) {
+      console.log("No se pudo leer el intervalo del trigger en la hoja " + spreadsheetId + ": " + errorToPlainText(error));
+      return null;
+    }
+  }).filter(function (interval) { return interval !== null; });
+  return intervals.length ? Math.min.apply(null, intervals) : DEFAULT_REMINDER_TRIGGER_MINUTES;
 }
 
 function setCourseExecutionStatus_(sheet, status, result) {
@@ -353,6 +392,7 @@ function writeTemplateSheet_(sheet) {
     ["horaRecordatorioInvitacion", (template.teacherInvitationReminder || {}).hour || "09:00"],
     ["recordatorioPendientesCadaDias", (template.pendingActivitiesReminder || {}).everyDays || 2],
     ["horaRecordatorioPendientes", (template.pendingActivitiesReminder || {}).hour || "10:00"],
+    ["intervaloTriggerRecordatoriosMinutos", template.reminderTriggerEveryMinutes || DEFAULT_REMINDER_TRIGGER_MINUTES],
     ["zonaHoraria", COURSE_SHEET_TIME_ZONE],
     ["carpetaAlmacenamiento", ""]
   ];
@@ -361,9 +401,36 @@ function writeTemplateSheet_(sheet) {
   sheet.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).insertCheckboxes().setBackground("#34a853");
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
-  sheet.getRange("B27").setNote("Zona horaria usada para todas las horas de esta hoja: Ciudad de Mexico.");
-  sheet.getRange("B28").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
+  configureReminderTriggerFieldRange_(sheet.getRange("B27"));
+  sheet.getRange("B28").setNote("Zona horaria usada para todas las horas de esta hoja: Ciudad de Mexico.");
+  sheet.getRange("B29").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
   sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 620); sheet.getDataRange().setWrap(true);
+}
+
+/** Agrega el campo a hojas creadas antes de que la frecuencia fuera editable. */
+function ensureReminderTriggerField_(spreadsheet) {
+  const sheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  const values = sheet.getDataRange().getValues();
+  let fieldRow = 0;
+  for (let index = COURSE_EXECUTION_CONTROL.FIELDS_HEADER_ROW - 1; index < values.length; index++) {
+    if (String(values[index][0] || "").trim() === "intervaloTriggerRecordatoriosMinutos") {
+      fieldRow = index + 1;
+      break;
+    }
+  }
+  if (!fieldRow) {
+    fieldRow = sheet.getLastRow() + 1;
+    sheet.getRange(fieldRow, 1, 1, 2).setValues([
+      ["intervaloTriggerRecordatoriosMinutos", DEFAULT_REMINDER_TRIGGER_MINUTES]
+    ]);
+  }
+  configureReminderTriggerFieldRange_(sheet.getRange(fieldRow, 2));
+}
+
+function configureReminderTriggerFieldRange_(range) {
+  range.setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(REMINDER_TRIGGER_INTERVALS_MINUTES.map(String), true).build())
+    .setNote("Minutos entre revisiones. Opciones rapidas como 1 o 5 sirven para pruebas. Si hay varios cursos, se usa el intervalo mas corto configurado.");
 }
 
 function writeTasksSheet_(sheet) {
@@ -410,6 +477,8 @@ function applyCourseTemplate_(spreadsheet) {
   COURSE_SETUP_TEMPLATE.pendingActivitiesReminder = Object.assign({}, COURSE_SETUP_TEMPLATE.pendingActivitiesReminder, {
     everyDays: nonNegativeInteger_(values.recordatorioPendientesCadaDias, 2), hour: normalizeHour_(values.horaRecordatorioPendientes, "10:00")
   });
+  COURSE_SETUP_TEMPLATE.reminderTriggerEveryMinutes = normalizeReminderTriggerMinutes_(
+    values.intervaloTriggerRecordatoriosMinutos, DEFAULT_REMINDER_TRIGGER_MINUTES);
   replaceArray_(COURSE_SETUP_TEMPLATE.students,
     readTable_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS).filter(function (participant) {
       return String(participant.name || "").trim() || String(participant.email || "").trim();
@@ -452,6 +521,14 @@ function positiveInteger_(value, fallback) {
 function nonNegativeInteger_(value, fallback) {
   const number = Number(value);
   return Number.isInteger(number) && number >= 0 ? number : fallback;
+}
+function normalizeReminderTriggerMinutes_(value, fallback) {
+  const number = Number(value || fallback);
+  if (REMINDER_TRIGGER_INTERVALS_MINUTES.indexOf(number) === -1) {
+    throw new Error("Intervalo de trigger invalido. Usa uno de estos valores en minutos: " +
+      REMINDER_TRIGGER_INTERVALS_MINUTES.join(", ") + ".");
+  }
+  return number;
 }
 function normalizeHour_(value, fallback) {
   if (value instanceof Date) return formatTimeParts_({ hours: value.getHours(), minutes: value.getMinutes() });
