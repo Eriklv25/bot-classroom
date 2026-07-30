@@ -53,7 +53,8 @@ function listClassroomCoursesForSetup() {
  * Devuelve: arreglo con id, titulo, estado y puntos maximos.
  * Se usa: manualmente para revisar tareas existentes o copiar un courseWorkId.
  */
-function listCourseWorkForSetup(courseId) {
+function listCourseWorkForSetup(courseId, options) {
+  options = options || {};
   const courseWorks = [];
   let pageToken = null;
 
@@ -83,7 +84,12 @@ function listCourseWorkForSetup(courseId) {
     pageToken = response.nextPageToken || null;
   } while (pageToken);
 
-  console.log("Tareas encontradas para curso " + courseId + ": " + JSON.stringify(courseWorks));
+  // El detalle completo es util al ejecutar esta funcion manualmente, pero en
+  // los procesos periodicos puede ocupar gran parte del registro y ocultar el
+  // error que realmente detuvo la corrida.
+  if (options.logDetails !== false) {
+    console.log("Tareas encontradas para curso " + courseId + ": " + JSON.stringify(courseWorks));
+  }
   return courseWorks;
 }
 
@@ -860,8 +866,26 @@ function procesarRecordatoriosProgramados() {
 /** Recorre las tareas configuradas sin evaluar ni calificar entregas. */
 function processScheduledTaskReminders_(errors, control) {
   loadConfigurationFromSpreadsheet(true);
-  const activeTasks = getActiveTaskConfigs();
-  const summary = { tasksChecked: 0, notificationsChecked: 0, incomplete: false };
+  const activeTasks = getActiveTaskConfigs({
+    logCourseWorkDetails: false,
+    shouldContinue: function (courseId) {
+      return hasReminderTimeRemaining_(control, "descubrir_tareas:" + courseId);
+    },
+    onCourseError: function (courseId, error) {
+      const message = "No se pudieron descubrir tareas del curso " + courseId +
+        "; se continuara con los demas cursos: " + errorToPlainText(error);
+      logReminderProgress_(control, "DESCUBRIMIENTO_CURSO_ERROR", {
+        courseId: courseId,
+        message: message
+      });
+      errors.push({ courseId: courseId, message: message });
+    }
+  });
+  const summary = {
+    tasksChecked: 0,
+    notificationsChecked: 0,
+    incomplete: activeTasks.incomplete === true
+  };
   for (let index = 0; index < activeTasks.length; index++) {
     const taskConfig = activeTasks[index];
     if (!hasReminderTimeRemaining_(control, "tarea:" + getTaskLabel(taskConfig))) {

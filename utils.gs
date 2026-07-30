@@ -77,23 +77,49 @@ function validateGlobalConfiguration() {
 }
 
 /** Descubre las tareas publicadas cuyo titulo coincide con una regla. */
-function getActiveTaskConfigs() {
+function getActiveTaskConfigs(options) {
+  options = options || {};
   const taskConfigs = [];
   const activeRules = TASK_RULES.filter(function (rule) {
     return rule && rule.enabled === true;
   });
 
-  COURSE_CONFIGS.filter(function (courseConfig) {
+  const enabledCourses = COURSE_CONFIGS.filter(function (courseConfig) {
     return courseConfig && courseConfig.enabled === true;
-  }).forEach(function (courseConfig) {
-    listCourseWorkForSetup(courseConfig.courseId).forEach(function (courseWork) {
+  });
+
+  for (let courseIndex = 0; courseIndex < enabledCourses.length; courseIndex++) {
+    const courseConfig = enabledCourses[courseIndex];
+    if (options.shouldContinue && !options.shouldContinue(courseConfig.courseId)) {
+      taskConfigs.incomplete = true;
+      break;
+    }
+
+    const rulesForCourse = activeRules.filter(function (candidate) {
+      return !candidate.courseId || String(candidate.courseId) === String(courseConfig.courseId);
+    });
+    // Si no hay reglas aplicables, consultar Classroom no puede producir una
+    // tarea activa y solo agrega latencia al recorrido.
+    if (!rulesForCourse.length) continue;
+
+    let courseWorks;
+    try {
+      courseWorks = listCourseWorkForSetup(courseConfig.courseId, {
+        logDetails: options.logCourseWorkDetails !== false
+      });
+    } catch (error) {
+      if (options.onCourseError) {
+        options.onCourseError(courseConfig.courseId, error);
+        continue;
+      }
+      throw error;
+    }
+
+    courseWorks.forEach(function (courseWork) {
       if (courseWork.state !== "PUBLISHED" || courseWork.workType !== "ASSIGNMENT") {
         return;
       }
 
-      const rulesForCourse = activeRules.filter(function (candidate) {
-        return !candidate.courseId || String(candidate.courseId) === String(courseConfig.courseId);
-      });
       const rule = findTaskRuleForTitle(courseWork.title, rulesForCourse);
       if (!rule) {
         return;
@@ -114,7 +140,7 @@ function getActiveTaskConfigs() {
         reminderHour: rule.reminderHour || "09:00"
       });
     });
-  });
+  }
 
   return taskConfigs;
 }
