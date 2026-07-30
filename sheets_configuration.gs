@@ -79,8 +79,14 @@ function ejecutarCambiosDelCurso(event) {
   if (event && !isCourseExecutionEdit_(event) && !isTaskCreationEdit_(event)) return null;
   const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
   const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  const requestedTaskTitle = event && isTaskCreationEdit_(event)
+    ? String(event.range.getSheet().getRange(event.range.getRow(), 4).getValue() || "").trim()
+    : "";
+  if (event && isTaskCreationEdit_(event) && !requestedTaskTitle) {
+    event.range.setValue(false);
+    throw new Error("Completa nombreActividad antes de marcar crearAhora.");
+  }
   if (event) {
-    if (isTaskCreationEdit_(event)) event.range.offset(0, 1).setValue(true);
     event.range.setValue(false);
   }
   const lock = LockService.getScriptLock();
@@ -103,7 +109,13 @@ function ejecutarCambiosDelCurso(event) {
       course = updateClassroomCourseFromConfig(courseId, template.course);
     }
     syncCourseSpreadsheetFile_(spreadsheet, course, readTemplateFields_(spreadsheet).carpetaAlmacenamiento);
-    const setup = createCourseSetupFromTemplate(Object.assign({}, template, { courseId: courseId }));
+    const setup = createCourseSetupFromTemplate(Object.assign({}, template, {
+      courseId: courseId,
+      // Desde Sheets, las tareas nuevas solo se crean mediante crearAhora.
+      // EJECUTAR sigue actualizando las tareas que ya existen en Classroom.
+      createMissingCourseWork: Boolean(requestedTaskTitle),
+      createOnlyCourseWorkTitle: requestedTaskTitle
+    }));
     const invitations = inviteStudentsFromTemplate(courseId, template.students || []);
     registerCourseSpreadsheet_(courseId, spreadsheet);
     setCourseExecutionStatus_(templateSheet, "COMPLETADO",
@@ -326,6 +338,7 @@ function writeTemplateSheet_(sheet) {
     ["horaRecordatorioInvitacion", (template.teacherInvitationReminder || {}).hour || "09:00"],
     ["recordatorioPendientesCadaDias", (template.pendingActivitiesReminder || {}).everyDays || 2],
     ["horaRecordatorioPendientes", (template.pendingActivitiesReminder || {}).hour || "10:00"],
+    ["zonaHoraria", Session.getScriptTimeZone()],
     ["carpetaAlmacenamiento", ""]
   ];
   replaceSheetValues_(sheet, rows);
@@ -333,7 +346,8 @@ function writeTemplateSheet_(sheet) {
   sheet.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).insertCheckboxes().setBackground("#34a853");
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
-  sheet.getRange("B27").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
+  sheet.getRange("B27").setNote("Zona horaria usada para todas las horas de esta hoja. Se configura en appsscript.json.");
+  sheet.getRange("B28").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
   sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 620); sheet.getDataRange().setWrap(true);
 }
 
@@ -356,6 +370,12 @@ function writeTasksSheet_(sheet) {
   writeTableWithHeaders_(sheet, TASK_COLUMNS, rows);
   const editableRows = Math.max(rows.length + 25, 50);
   sheet.getRange(2, 1, editableRows, 2).insertCheckboxes();
+  sheet.getRange(1, 1).setNote("Marca crearAhora solamente en la fila que deseas crear. La casilla vuelve a desmarcarse al iniciar el proceso.");
+  sheet.getRange(1, 2).setNote("Activa o desactiva la revision automatica y los recordatorios de esta tarea. No crea la tarea en Classroom.");
+  sheet.getRange(1, 13).setNote("Fecha limite en formato AAAA-MM-DD (por ejemplo, 2026-08-31).");
+  sheet.getRange(1, 14).setNote("Hora limite en formato HH:MM de 24 horas (por ejemplo, 23:59), usando la zona horaria indicada en Plantilla de curso.");
+  sheet.getRange(2, 13, editableRows, 1).setNumberFormat("yyyy-mm-dd");
+  sheet.getRange(2, 14, editableRows, 1).setNumberFormat("hh:mm");
   const reviewRule = SpreadsheetApp.newDataValidation().requireValueInList([REVIEW_MODES.DOCUMENT_ONLY, REVIEW_MODES.AI], true).build();
   sheet.getRange(2, 6, editableRows, 1).setDataValidation(reviewRule);
 }
@@ -464,14 +484,21 @@ function parseDateParts_(value) {
   if (value instanceof Date) return { year: value.getFullYear(), month: value.getMonth() + 1, day: value.getDate() };
   const match = String(value).match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   if (!match) throw new Error("Fecha invalida; usa AAAA-MM-DD: " + value);
-  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  const parts = { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  const date = new Date(parts.year, parts.month - 1, parts.day);
+  if (date.getFullYear() !== parts.year || date.getMonth() + 1 !== parts.month || date.getDate() !== parts.day) {
+    throw new Error("Fecha inexistente; usa AAAA-MM-DD: " + value);
+  }
+  return parts;
 }
 function parseTimeParts_(value) {
   if (!value) return null;
   if (value instanceof Date) return { hours: value.getHours(), minutes: value.getMinutes() };
   const match = String(value).match(/^(\d{1,2}):(\d{2})$/);
   if (!match) throw new Error("Hora invalida; usa HH:MM: " + value);
-  return { hours: Number(match[1]), minutes: Number(match[2]) };
+  const parts = { hours: Number(match[1]), minutes: Number(match[2]) };
+  if (parts.hours > 23 || parts.minutes > 59) throw new Error("Hora inexistente; usa HH:MM de 00:00 a 23:59: " + value);
+  return parts;
 }
 function formatDateParts_(value) { return [value.year, padTwo_(value.month), padTwo_(value.day)].join("-"); }
 function formatTimeParts_(value) { return padTwo_(value.hours) + ":" + padTwo_(value.minutes); }

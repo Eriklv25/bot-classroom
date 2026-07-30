@@ -292,7 +292,7 @@ const COURSE_SETUP_TEMPLATE = {
     { selected: false, name: "GARCÍA MIRANDA J. SANTOS", email: "santos.garcia@itcelaya.edu.mx" },
     { selected: false, name: "GUERRERO NAVARRETE ÁNGEL", email: "angel.guerrero@itcelaya.edu.mx" },
     { selected: false, name: "JAIRO SORIA", email: "jesoriap@gmail.com" },
-    { selected: false, name: "LÓPEZ VARGAS ERIK", email: "erik.lopez@itcelaya.edu.mx" },
+    { selected: false, name: "ERIK LOPEZ VARGAS", email: "d2403041@itcelaya.edu.mx" },
     { selected: false, name: "MAEDA SÁNCHEZ ARNOLDO", email: "arnoldo.maeda@itcelaya.edu.mx" },
     { selected: false, name: "MORENO BELLO KARLA JUDITH", email: "karla.moreno@itcelaya.edu.mx" },
     { selected: false, name: "OROZCO MENDOZA HORACIO", email: "horacio.orozco@itcelaya.edu.mx" },
