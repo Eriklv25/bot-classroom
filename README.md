@@ -103,6 +103,9 @@ aplica al marcar **EJECUTAR**; como Apps Script utiliza un único trigger para
 todos los cursos, el bot adopta el intervalo más corto de todas las hojas
 registradas. El trigger evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
 hora, y el bot registra cada envío para no mandar más de un recordatorio por día.
+Los recordatorios de invitación para profesores se consolidan: cada profesor
+recibe como máximo un correo al día con la lista de todos sus cursos pendientes,
+aunque el trigger se ejecute varias veces durante la jornada.
 
 Google Sheets guarda cada edición automáticamente. No cambies nombres de
 pestañas, encabezados ni los nombres de campo. Usa

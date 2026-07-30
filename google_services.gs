@@ -769,26 +769,99 @@ function getParticipantInvitationStatus_(courseId, emails) {
 
 /** Punto de entrada periodico para todos los recordatorios configurados en la hoja. */
 function procesarRecordatoriosProgramados() {
-  loadConfigurationFromSpreadsheet(true);
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(10000)) {
+    console.log("Otra ejecucion de recordatorios sigue activa. Se cancela esta corrida.");
+    return { skippedBecauseLocked: true, invitations: [], pendingActivities: null };
+  }
+
   const summary = { invitations: [], pendingActivities: null };
-  const registry = getCourseSpreadsheetRegistry_();
-  Object.keys(registry).forEach(function (courseId) {
-    const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
-    loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
-    const config = COURSE_SETUP_TEMPLATE.teacherInvitationReminder || {};
-    if (config.enabled !== false && isScheduledReminderDue_("invitaciones:" + courseId, config.everyDays, config.hour)) {
-      summary.invitations.push(sendTeacherInvitationRemindersFromTemplate(true));
-      markScheduledReminderSent_("invitaciones:" + courseId);
-    }
-    const pendingConfig = COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {};
-    if (pendingConfig.enabled !== false && isScheduledReminderDue_("pendientes:" + courseId, pendingConfig.everyDays, pendingConfig.hour)) {
-      summary["pendingActivities:" + courseId] = sendPendingActivitiesSummary_(courseId);
-      markScheduledReminderSent_("pendientes:" + courseId);
-    }
-  });
+  try {
+    const registry = getCourseSpreadsheetRegistry_();
+    const invitationCourses = [];
+    Object.keys(registry).forEach(function (courseId) {
+      const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
+      loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
+      const config = COURSE_SETUP_TEMPLATE.teacherInvitationReminder || {};
+      if (config.enabled !== false) {
+        const invitationCourse = getPendingTeacherInvitationsForCourse_(courseId, config);
+        invitationCourse.isDue = isScheduledReminderDue_("invitaciones:" + courseId, config.everyDays, config.hour);
+        invitationCourses.push(invitationCourse);
+      }
+      const pendingConfig = COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {};
+      if (pendingConfig.enabled !== false && isScheduledReminderDue_("pendientes:" + courseId, pendingConfig.everyDays, pendingConfig.hour)) {
+        summary["pendingActivities:" + courseId] = sendPendingActivitiesSummary_(courseId);
+        markScheduledReminderSent_("pendientes:" + courseId);
+      }
+    });
+    summary.invitations = sendAggregatedTeacherInvitationReminders_(invitationCourses);
+    invitationCourses.forEach(function (course) {
+      if (course.isDue) markScheduledReminderSent_("invitaciones:" + course.courseId);
+    });
+  } finally {
+    lock.releaseLock();
+  }
   // El lote agrupa las actividades pendientes por tarea y respeta la frecuencia de cada fila.
   summary.pendingActivities = processPendingSubmissionsBatch();
   return summary;
+}
+
+/** Obtiene las invitaciones pendientes de profesores sin enviar correos todavia. */
+function getPendingTeacherInvitationsForCourse_(courseId, reminderConfig) {
+  const selectedTeachers = (COURSE_SETUP_TEMPLATE.students || []).filter(function (participant) {
+    const role = String(participant && (participant.rol || participant.role) || "").trim().toUpperCase();
+    return participant && participant.selected === true && role === "PROFESOR";
+  }).map(function (participant) { return participant.email; });
+  const status = getParticipantInvitationStatus_(courseId, selectedTeachers);
+  const course = Classroom.Courses.get(courseId);
+  return {
+    courseId: courseId,
+    name: course.name || courseId,
+    alternateLink: course.alternateLink || "",
+    recipients: status.pending.concat(status.missingInvitation),
+    skippedAccepted: status.accepted,
+    reminderConfig: reminderConfig || {}
+  };
+}
+
+/** Envia como maximo un correo diario a cada profesor con todos sus cursos pendientes. */
+function sendAggregatedTeacherInvitationReminders_(courses) {
+  const byEmail = {};
+  (courses || []).forEach(function (course) {
+    course.recipients.forEach(function (email) {
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      if (!normalizedEmail) return;
+      if (!byEmail[normalizedEmail]) byEmail[normalizedEmail] = [];
+      byEmail[normalizedEmail].push(course);
+    });
+  });
+
+  const summaries = [];
+  Object.keys(byEmail).forEach(function (email) {
+    const recipientKey = "invitaciones:profesor:" + email;
+    const pendingCourses = byEmail[email];
+    if (!pendingCourses.some(function (course) { return course.isDue; })) return;
+    if (!isScheduledReminderDue_(recipientKey, 1, "00:00")) return;
+    const reminderConfig = pendingCourses[0].reminderConfig || {};
+    const courseLines = pendingCourses.map(function (course) {
+      return "- " + course.name + (course.alternateLink ? ": " + course.alternateLink : "");
+    });
+    MailApp.sendEmail({
+      to: email,
+      subject: reminderConfig.subject || "Recordatorio: acepta tus invitaciones a Classroom",
+      body: [
+        reminderConfig.bodyIntro || "Hola. Siguen pendientes tus invitaciones como profesor a Classroom.",
+        "",
+        "Cursos pendientes:",
+        courseLines.join("\n"),
+        "",
+        "Por favor entra a Classroom y acepta las invitaciones."
+      ].join("\n")
+    });
+    markScheduledReminderSent_(recipientKey);
+    summaries.push({ email: email, courseIds: pendingCourses.map(function (course) { return course.courseId; }) });
+  });
+  return summaries;
 }
 
 /** Envia a cada participante un solo correo con sus actividades aun sin entregar. */
