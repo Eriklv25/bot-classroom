@@ -16,6 +16,9 @@ const REMINDER_TRIGGER_PROPERTY = "REMINDER_TRIGGER_INTERVAL_MINUTES";
 const REMINDER_TRIGGER_MODE_PROPERTY = "REMINDER_TRIGGER_MODE";
 const REMINDER_TRIGGER_MODE = "ONE_SHOT_V1";
 const REMINDER_TRIGGER_MINIMUM_DELAY_MS = 60 * 1000;
+// Un trigger instalable dispone normalmente de seis minutos. Se corta antes para
+// que alcance a registrar el diagnostico, liberar el lock y crear el siguiente.
+const REMINDER_SAFE_RUNTIME_MS = 4 * 60 * 1000;
 
 const COURSE_EXECUTION_CONTROL = {
   CHECKBOX: "B5",
