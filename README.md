@@ -83,10 +83,10 @@ ejecuta `listarHojasDeCursos`) para obtener nuevamente sus nombres y enlaces.
 En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
 ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
 estado, fecha y hora de entrega, además de la frecuencia y hora de sus
-recordatorios. Para añadir una actividad, completa una fila vacía y marca
-**crearAhora** únicamente en esa fila; el bot crea o actualiza el curso y
-devuelve la casilla a su estado desmarcado. Marcar **EJECUTAR** en la plantilla
-no crea tareas faltantes: solo actualiza las que ya existen. El nombre identifica
+recordatorios. Para añadir actividades, completa sus filas y marca
+**crearAhora** en todas las que quieras preparar. La selección no ejecuta nada
+por sí sola: marca **EJECUTAR** en la plantilla para crearlas juntas. Las
+casillas permanecen seleccionadas como referencia. El nombre identifica
 de forma única la actividad: si ya existe en Classroom se actualiza y nunca se
 crea un duplicado. La columna **enabled** no crea actividades; habilita la
 revisión automática y los recordatorios de esa tarea.
@@ -107,11 +107,10 @@ seguridad, el flujo no elimina
 automáticamente participantes, temas ni tareas que quites de la hoja.
 
 En **Participantes** puedes marcar o desmarcar cualquier persona en cualquier
-momento. También puedes escribir el nombre y correo de un profesor nuevo en una
-fila vacía y marcar su casilla. Al volver a ejecutar los cambios, solo se intenta
+momento. También puedes escribir nombre y correo en una fila vacía, elegir
+**ALUMNO** o **PROFESOR** en la columna `rol` y marcar su casilla. Al volver a ejecutar los cambios, solo se intenta
 invitar a las filas marcadas; quienes ya están inscritos o invitados se omiten
-sin error. Estos profesores participan en el curso con el rol de alumno para
-cargar sus evidencias.
+sin error. Classroom aplica a cada persona el rol elegido en la hoja.
 
 La clave `OPENAI_API_KEY` sigue exclusivamente en Script Properties y nunca se
 copia a Sheets.

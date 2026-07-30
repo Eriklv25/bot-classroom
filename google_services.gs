@@ -304,7 +304,7 @@ function createNewCourseFromTemplate() {
   return summary;
 }
 
-/** Invita como alumnos unicamente a los profesores marcados en el checklist. */
+/** Invita con el rol elegido unicamente a los participantes marcados. */
 function inviteStudentsFromTemplate(courseId, students) {
   if (!courseId) {
     throw new Error("Falta courseId.");
@@ -321,14 +321,16 @@ function inviteStudentsFromTemplate(courseId, students) {
       summary.errors.push({ name: student.name || "", error: "Falta email." });
       return;
     }
+    const role = String(student.rol || student.role || "ALUMNO").trim().toUpperCase() === "PROFESOR"
+      ? "TEACHER" : "STUDENT";
 
     try {
       const invitation = Classroom.Invitations.create({
         courseId: courseId,
         userId: email,
-        role: "STUDENT"
+        role: role
       });
-      summary.invited.push({ name: student.name || "", email: email, invitationId: invitation.id || "" });
+      summary.invited.push({ name: student.name || "", email: email, role: role, invitationId: invitation.id || "" });
     } catch (error) {
       const text = errorToPlainText(error);
       if (text.indexOf("ALREADY_EXISTS") !== -1 || text.indexOf("already") !== -1) {
@@ -432,14 +434,15 @@ function createCourseSetupFromTemplate(template) {
       return;
     }
 
-    const requestedTitle = normalizeSetupName(template.createOnlyCourseWorkTitle || "");
+    const requestedTitles = (template.createOnlyCourseWorkTitles || [template.createOnlyCourseWorkTitle])
+      .filter(Boolean).map(normalizeSetupName);
     const mayCreateMissing = template.createMissingCourseWork !== false;
-    if (!mayCreateMissing || (requestedTitle && requestedTitle !== normalizeSetupName(workConfig.title))) {
+    if (!mayCreateMissing || (requestedTitles.length && requestedTitles.indexOf(normalizeSetupName(workConfig.title)) === -1)) {
       summary.courseWorkSkipped.push({ title: workConfig.title, reason: "No se marco crearAhora" });
       return;
     }
 
-    if (workConfig.enabled === false && !requestedTitle) {
+    if (workConfig.enabled === false && !requestedTitles.length) {
       summary.courseWorkSkipped.push({ title: workConfig.title, reason: "Tarea deshabilitada" });
       return;
     }
@@ -729,6 +732,15 @@ function getParticipantInvitationStatus_(courseId, emails) {
     });
     pageToken = response.nextPageToken || null;
   } while (pageToken);
+  pageToken = null;
+  do {
+    const response = Classroom.Courses.Teachers.list(courseId, { pageSize: 100, pageToken: pageToken });
+    (response.teachers || []).forEach(function (teacher) {
+      const email = teacher.profile && teacher.profile.emailAddress;
+      if (email) accepted[String(email).toLowerCase()] = true;
+    });
+    pageToken = response.nextPageToken || null;
+  } while (pageToken);
   const invited = {};
   listInvitationsForCourse(courseId).forEach(function (invitation) {
     if (invitation.userId) invited[String(invitation.userId).toLowerCase()] = true;
@@ -797,9 +809,17 @@ function sendPendingActivitiesSummary_(courseId) {
 function isScheduledReminderDue_(key, everyDays, hour) {
   const configuredHour = String(hour || "09:00").split(":");
   const now = new Date();
-  if (now.getHours() !== Number(configuredHour[0])) return false;
+  const scheduledMinutes = Number(configuredHour[0]) * 60 + Number(configuredHour[1] || 0);
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  if (currentMinutes < scheduledMinutes) return false;
   const last = Number(PropertiesService.getScriptProperties().getProperty("REMINDER_SENT:" + key) || 0);
-  return !last || now.getTime() - last >= Number(everyDays || 1) * 24 * 60 * 60 * 1000;
+  if (!last) return true;
+  const intervalDays = Math.max(0, Number(everyDays) || 0);
+  if (intervalDays === 0) {
+    return Utilities.formatDate(new Date(last), Session.getScriptTimeZone(), "yyyy-MM-dd") !==
+      Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  return now.getTime() - last >= intervalDays * 24 * 60 * 60 * 1000;
 }
 
 function markScheduledReminderSent_(key) {
