@@ -774,6 +774,7 @@ function getParticipantInvitationStatus_(courseId, emails) {
 
 /** Punto de entrada periodico para todos los recordatorios configurados en la hoja. */
 function procesarRecordatoriosProgramados() {
+  const startedAt = new Date();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) {
     console.log("Otra ejecucion de recordatorios sigue activa. Se cancela esta corrida.");
@@ -805,12 +806,16 @@ function procesarRecordatoriosProgramados() {
         summary.errors.push({ courseId: courseId, message: message });
       }
     });
+
+    // Este lote tambien envia los recordatorios configurados por tarea. Debe
+    // ejecutarse antes de liberar el lock para que dos triggers no recorran y
+    // notifiquen simultaneamente las mismas entregas.
+    summary.pendingActivities = processPendingSubmissionsBatchWithLockHeld_(
+      startedAt, createExecutionTimer(startedAt), createEmptyBatchSummary(startedAt));
+    return summary;
   } finally {
     lock.releaseLock();
   }
-  // El lote agrupa las actividades pendientes por tarea y respeta la frecuencia de cada fila.
-  summary.pendingActivities = processPendingSubmissionsBatch();
-  return summary;
 }
 
 /** Obtiene las invitaciones pendientes de profesores sin enviar correos todavia. */

@@ -6,7 +6,6 @@
  * Se usa: como funcion principal programada cada hora.
  */
 function processPendingSubmissionsBatch() {
-  loadConfigurationFromSpreadsheet(true);
   const startedAt = new Date();
   const timer = createExecutionTimer(startedAt);
   const lock = LockService.getScriptLock();
@@ -26,34 +25,7 @@ function processPendingSubmissionsBatch() {
       return summary;
     }
 
-    validateGlobalConfiguration();
-
-    const activeTasks = getActiveTaskConfigs();
-    console.log("Tareas activas: " + activeTasks.length);
-
-    for (let index = 0; index < activeTasks.length; index++) {
-      const taskConfig = activeTasks[index];
-
-      if (!hasSafeTimeRemaining(timer)) {
-        console.log("Deteniendo lote por limite seguro de tiempo antes de iniciar otra tarea");
-        break;
-      }
-
-      if (summary.processed >= CONFIG.MAX_EVIDENCES_PER_RUN) {
-        console.log("Deteniendo lote por limite de evidencias configurado");
-        break;
-      }
-
-      processOneConfiguredTask(taskConfig, timer, summary);
-    }
-
-    summary.finishedAt = new Date();
-    summary.elapsedMs = summary.finishedAt.getTime() - startedAt.getTime();
-    console.log("Ejecucion finalizada: " + JSON.stringify(summary));
-
-    appendExecutionLogToSheet(summary);
-    sendBatchSummaryToTeacher(summary);
-    return summary;
+    return processPendingSubmissionsBatchWithLockHeld_(startedAt, timer, summary);
   } catch (error) {
     summary.errors++;
     summary.criticalError = errorToPlainText(error);
@@ -68,6 +40,46 @@ function processPendingSubmissionsBatch() {
       console.log("No fue necesario liberar lock o ya estaba liberado: " + releaseError);
     }
   }
+}
+
+/**
+ * Ejecuta el lote suponiendo que el llamador ya posee el ScriptLock.
+ *
+ * El procesador global de recordatorios usa esta variante para conservar el
+ * mismo lock durante toda la corrida. De otro modo liberaba el lock entre los
+ * recordatorios generales y los de cada tarea, permitiendo que el trigger del
+ * minuto siguiente iniciara otra corrida sobre los mismos cursos.
+ */
+function processPendingSubmissionsBatchWithLockHeld_(startedAt, timer, summary) {
+  loadConfigurationFromSpreadsheet(true);
+  validateGlobalConfiguration();
+
+  const activeTasks = getActiveTaskConfigs();
+  console.log("Tareas activas: " + activeTasks.length);
+
+  for (let index = 0; index < activeTasks.length; index++) {
+    const taskConfig = activeTasks[index];
+
+    if (!hasSafeTimeRemaining(timer)) {
+      console.log("Deteniendo lote por limite seguro de tiempo antes de iniciar otra tarea");
+      break;
+    }
+
+    if (summary.processed >= CONFIG.MAX_EVIDENCES_PER_RUN) {
+      console.log("Deteniendo lote por limite de evidencias configurado");
+      break;
+    }
+
+    processOneConfiguredTask(taskConfig, timer, summary);
+  }
+
+  summary.finishedAt = new Date();
+  summary.elapsedMs = summary.finishedAt.getTime() - startedAt.getTime();
+  console.log("Ejecucion finalizada: " + JSON.stringify(summary));
+
+  appendExecutionLogToSheet(summary);
+  sendBatchSummaryToTeacher(summary);
+  return summary;
 }
 
 /**
