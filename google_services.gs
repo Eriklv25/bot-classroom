@@ -429,6 +429,7 @@ function createCourseSetupFromTemplate(template) {
         description: workConfig.description || "",
         maxPoints: workConfig.maxPoints || template.defaultMaxPoints || CONFIG.VALID_GRADE,
         state: workConfig.state || template.defaultState || "DRAFT",
+        currentState: existing.state,
         dueDate: workConfig.dueDate || null,
         dueTime: workConfig.dueTime || null,
         topicId: topicId || null
@@ -485,10 +486,16 @@ function updateCourseWorkFromConfig(courseId, courseWorkId, config) {
   const resource = {
     title: config.title,
     description: config.description || "",
-    maxPoints: Number(config.maxPoints || CONFIG.VALID_GRADE),
-    state: config.state || "DRAFT"
+    maxPoints: Number(config.maxPoints || CONFIG.VALID_GRADE)
   };
-  const updateFields = ["title", "description", "maxPoints", "state"];
+  const updateFields = ["title", "description", "maxPoints"];
+  const requestedState = config.state || "DRAFT";
+  // Classroom solo permite cambiar el estado de una tarea existente a PUBLISHED.
+  // En particular, una tarea publicada no puede regresar a DRAFT mediante patch.
+  if (requestedState === "PUBLISHED" && config.currentState !== "PUBLISHED") {
+    resource.state = requestedState;
+    updateFields.push("state");
+  }
   if (config.topicId) {
     resource.topicId = String(config.topicId);
     updateFields.push("topicId");
