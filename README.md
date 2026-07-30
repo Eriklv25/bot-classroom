@@ -84,9 +84,12 @@ En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
 ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
 estado, fecha y hora de entrega, además de la frecuencia y hora de sus
 recordatorios. Para añadir una actividad, completa una fila vacía y marca
-**crearAhora**; el bot crea o actualiza el curso y devuelve la casilla a su
-estado desmarcado. El nombre identifica de forma única la actividad: si ya
-existe en Classroom se actualiza y nunca se crea un duplicado.
+**crearAhora** únicamente en esa fila; el bot crea o actualiza el curso y
+devuelve la casilla a su estado desmarcado. Marcar **EJECUTAR** en la plantilla
+no crea tareas faltantes: solo actualiza las que ya existen. El nombre identifica
+de forma única la actividad: si ya existe en Classroom se actualiza y nunca se
+crea un duplicado. La columna **enabled** no crea actividades; habilita la
+revisión automática y los recordatorios de esa tarea.
 
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
@@ -97,7 +100,10 @@ hora para que los correos no se repitan en cada ejecución.
 
 Google Sheets guarda cada edición automáticamente. No cambies nombres de
 pestañas, encabezados ni los nombres de campo. Usa
-`AAAA-MM-DD` para fechas y `HH:MM` para horas. Por seguridad, el flujo no elimina
+`AAAA-MM-DD` para fechas (por ejemplo, `2026-08-31`) y `HH:MM` en formato de 24
+horas (por ejemplo, `23:59`). Todas las horas usan la zona `America/Mexico_City`,
+que también aparece en el campo `zonaHoraria` de **Plantilla de curso**. Por
+seguridad, el flujo no elimina
 automáticamente participantes, temas ni tareas que quites de la hoja.
 
 En **Participantes** puedes marcar o desmarcar cualquier persona en cualquier

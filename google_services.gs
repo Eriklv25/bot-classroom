@@ -415,10 +415,6 @@ function createCourseSetupFromTemplate(template) {
   });
 
   (template.courseWork || []).forEach(function (workConfig) {
-    if (workConfig.enabled === false) {
-      return;
-    }
-
     const existing = courseWorkMap[normalizeSetupName(workConfig.title)];
     // El titulo es la identidad estable: nunca se crea una segunda tarea con el mismo nombre.
     if (existing) {
@@ -433,6 +429,18 @@ function createCourseSetupFromTemplate(template) {
         topicId: topicId || null
       });
       summary.courseWorkUpdated.push({ title: updated.title, courseWorkId: updated.id });
+      return;
+    }
+
+    const requestedTitle = normalizeSetupName(template.createOnlyCourseWorkTitle || "");
+    const mayCreateMissing = template.createMissingCourseWork !== false;
+    if (!mayCreateMissing || (requestedTitle && requestedTitle !== normalizeSetupName(workConfig.title))) {
+      summary.courseWorkSkipped.push({ title: workConfig.title, reason: "No se marco crearAhora" });
+      return;
+    }
+
+    if (workConfig.enabled === false && !requestedTitle) {
+      summary.courseWorkSkipped.push({ title: workConfig.title, reason: "Tarea deshabilitada" });
       return;
     }
 
