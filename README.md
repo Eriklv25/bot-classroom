@@ -54,9 +54,10 @@ del archivo de credenciales actualizado. Nunca confirmes ese archivo en Git.
 El flujo cotidiano se realiza desde una única hoja; no hace falta volver al
 selector de funciones de Apps Script después de crearla:
 
-1. En Apps Script ejecuta una sola vez **`crearHojaDeCurso`** y concede los
-   permisos solicitados. La función crea **Configuracion - Bot Classroom** en Mi
-   unidad (o devuelve la hoja existente) y deja su URL en el registro.
+1. En Apps Script ejecuta **`crearHojaDeCurso`** cada vez que quieras preparar
+   un curso nuevo y concede los permisos solicitados. Cada ejecución crea una
+   hoja de cálculo independiente y deja su URL en el registro; nunca reutiliza
+   ni borra la hoja de un curso anterior.
 2. Configura los datos generales en **Plantilla de curso**, selecciona las
    personas en **Participantes** y administra toda la configuración de cada
    actividad en **Tareas**. No existen otras pestañas de configuración.
@@ -75,6 +76,10 @@ selector de funciones de Apps Script después de crearla:
    nuevas. El estado, la fecha y el resultado de cada ejecución aparecen en
    **Plantilla de curso**.
 
+Las hojas creadas permanecen disponibles en Drive. El registro interno relaciona
+cada `courseId` con su hoja; usa **Bot Classroom > Listar hojas de cursos** (o
+ejecuta `listarHojasDeCursos`) para obtener nuevamente sus nombres y enlaces.
+
 En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
 ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
 estado y fecha. Para añadir una actividad, completa una fila vacía y marca
@@ -85,6 +90,13 @@ Google Sheets guarda cada edición automáticamente. No cambies nombres de
 pestañas, encabezados ni los nombres de campo. Usa
 `AAAA-MM-DD` para fechas y `HH:MM` para horas. Por seguridad, el flujo no elimina
 automáticamente participantes, temas ni tareas que quites de la hoja.
+
+En **Participantes** puedes marcar o desmarcar cualquier persona en cualquier
+momento. También puedes escribir el nombre y correo de un profesor nuevo en una
+fila vacía y marcar su casilla. Al volver a ejecutar los cambios, solo se intenta
+invitar a las filas marcadas; quienes ya están inscritos o invitados se omiten
+sin error. Estos profesores participan en el curso con el rol de alumno para
+cargar sus evidencias.
 
 La clave `OPENAI_API_KEY` sigue exclusivamente en Script Properties y nunca se
 copia a Sheets.

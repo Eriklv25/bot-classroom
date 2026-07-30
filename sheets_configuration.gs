@@ -19,25 +19,29 @@ const TASK_COLUMNS = [
   "maxPoints", "state", "dueDate", "dueTime"
 ];
 
-/** Crea la hoja de configuracion o actualiza la existente al formato de tres pestañas. */
+const PARTICIPANT_COLUMNS = ["selected", "name", "email"];
+
+/** Crea una hoja independiente para un curso nuevo sin modificar hojas anteriores. */
 function createConfigurationSpreadsheet() {
   const properties = PropertiesService.getScriptProperties();
-  const existingId = properties.getProperty(PROPERTY_KEYS.CONFIG_SPREADSHEET_ID);
-  let spreadsheet = null;
-  if (existingId) {
-    try { spreadsheet = SpreadsheetApp.openById(existingId); } catch (error) {
-      console.log("La hoja anterior no es accesible; se creara una nueva.");
-    }
-  }
-  if (!spreadsheet) {
-    spreadsheet = SpreadsheetApp.create("Configuracion - Bot Classroom");
-    properties.setProperty(PROPERTY_KEYS.CONFIG_SPREADSHEET_ID, spreadsheet.getId());
-    moveSpreadsheetToConfiguredFolder_(spreadsheet);
-  }
+  const spreadsheet = SpreadsheetApp.create("Nuevo curso - Bot Classroom");
+  properties.setProperty(PROPERTY_KEYS.CONFIG_SPREADSHEET_ID, spreadsheet.getId());
+  moveSpreadsheetToConfiguredFolder_(spreadsheet);
   writeConfigurationSpreadsheet_(spreadsheet);
   ensureCourseConfigurationTrigger_(spreadsheet);
   logConfigurationSpreadsheetLink_(spreadsheet, "Hoja de configuracion lista");
   return spreadsheet.getUrl();
+}
+
+/** Crea y registra una hoja ya vinculada a un curso creado por otro flujo. */
+function crearHojaDeConfiguracionParaCurso(courseId, courseName) {
+  const url = createConfigurationSpreadsheet();
+  const spreadsheet = getConfigurationSpreadsheet_();
+  findTemplateFieldRange_(spreadsheet, "existingCourseId").setValue(String(courseId || ""));
+  findTemplateFieldRange_(spreadsheet, "courseName").setValue(String(courseName || ""));
+  spreadsheet.rename(String(courseName || "Curso") || "Curso");
+  if (courseId) registerCourseSpreadsheet_(courseId, spreadsheet);
+  return url;
 }
 
 function crearHojaDeCurso() { return createConfigurationSpreadsheet(); }
@@ -47,6 +51,7 @@ function crearHojaDeConfiguracion() { return createConfigurationSpreadsheet(); }
 function onOpen() {
   SpreadsheetApp.getUi().createMenu("Bot Classroom")
     .addItem("Elegir carpeta de almacenamiento", "elegirCarpetaDeAlmacenamiento")
+    .addItem("Listar hojas de cursos", "listarHojasDeCursos")
     .addToUi();
 }
 
@@ -189,6 +194,38 @@ function getCourseSpreadsheetRegistry_() {
   try { return JSON.parse(value) || {}; } catch (error) { throw new Error("Registro de hojas invalido."); }
 }
 
+/** Devuelve y registra en consola los enlaces de todas las hojas de curso conocidas. */
+function listarHojasDeCursos() {
+  const registry = getCourseSpreadsheetRegistry_();
+  const courses = Object.keys(registry).map(function (courseId) {
+    try {
+      const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
+      return { courseId: courseId, name: spreadsheet.getName(), url: spreadsheet.getUrl() };
+    } catch (error) {
+      return { courseId: courseId, name: "Hoja no accesible", url: "" };
+    }
+  });
+  console.log("Hojas de cursos: " + JSON.stringify(courses));
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) {
+    const links = courses.length ? courses.map(function (course) {
+      const label = escapeHtml_(course.name + " (" + course.courseId + ")");
+      return course.url ? '<li><a href="' + escapeHtml_(course.url) + '" target="_blank">' + label + '</a></li>' : "<li>" + label + "</li>";
+    }).join("") : "<li>Todavia no hay cursos registrados.</li>";
+    SpreadsheetApp.getUi().showModalDialog(
+      HtmlService.createHtmlOutput("<p>Selecciona la hoja que deseas abrir:</p><ul>" + links + "</ul>").setWidth(520).setHeight(320),
+      "Hojas de cursos"
+    );
+  }
+  return courses;
+}
+
+function escapeHtml_(value) {
+  return String(value || "").replace(/[&<>\"]/g, function (character) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '\"': "&quot;" }[character];
+  });
+}
+
 function configurarCarpetaDeHojas(folderIdOrUrl) {
   const id = extractDriveId_(folderIdOrUrl);
   const properties = PropertiesService.getScriptProperties();
@@ -245,7 +282,7 @@ function loadConfigurationFromSpecificSpreadsheet_(spreadsheet) {
 function writeConfigurationSpreadsheet_(spreadsheet) {
   const template = getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
   writeTemplateSheet_(template);
-  writeTable_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS), COURSE_SETUP_TEMPLATE.students);
+  writeParticipantsSheet_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS));
   writeTasksSheet_(getOrCreateSheet_(spreadsheet, CONFIG_SHEET_NAMES.TASKS));
   spreadsheet.getSheets().forEach(function (sheet) {
     if ([CONFIG_SHEET_NAMES.TEMPLATE, CONFIG_SHEET_NAMES.STUDENTS, CONFIG_SHEET_NAMES.TASKS].indexOf(sheet.getName()) === -1) {
@@ -253,6 +290,15 @@ function writeConfigurationSpreadsheet_(spreadsheet) {
     }
   });
   spreadsheet.setActiveSheet(template);
+}
+
+function writeParticipantsSheet_(sheet) {
+  writeTableWithHeaders_(sheet, PARTICIPANT_COLUMNS, COURSE_SETUP_TEMPLATE.students || []);
+  const editableRows = Math.max((COURSE_SETUP_TEMPLATE.students || []).length + 25, 50);
+  sheet.getRange(2, 1, editableRows, 1).insertCheckboxes();
+  sheet.getRange(1, 1).setNote("Marca la casilla para invitar a esta persona. Puedes agregar nuevos participantes en las filas vacias.");
+  sheet.setColumnWidth(2, 260);
+  sheet.setColumnWidth(3, 280);
 }
 
 function writeTemplateSheet_(sheet) {
@@ -314,7 +360,10 @@ function applyCourseTemplate_(spreadsheet) {
   COURSE_SETUP_TEMPLATE.skipExistingCourseWork = values.skipExistingCourseWork !== false;
   COURSE_SETUP_TEMPLATE.defaultState = values.defaultState || "DRAFT";
   COURSE_SETUP_TEMPLATE.defaultMaxPoints = values.defaultMaxPoints || 100;
-  replaceArray_(COURSE_SETUP_TEMPLATE.students, readTable_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS));
+  replaceArray_(COURSE_SETUP_TEMPLATE.students,
+    readTable_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS).filter(function (participant) {
+      return String(participant.name || "").trim() || String(participant.email || "").trim();
+    }));
   const tasks = readTaskRows_(spreadsheet);
   replaceArray_(COURSE_SETUP_TEMPLATE.topics, uniqueTopics_(tasks));
   replaceArray_(COURSE_SETUP_TEMPLATE.courseWork, tasks.map(function (task) {
