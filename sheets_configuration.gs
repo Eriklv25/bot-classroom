@@ -148,22 +148,32 @@ function isTaskCreationEdit_(event) {
 }
 
 function ensureCourseConfigurationTrigger_(spreadsheet) {
-  const triggers = ScriptApp.getProjectTriggers();
+  let triggers = ScriptApp.getProjectTriggers();
   const spreadsheetId = spreadsheet.getId();
-  const hasTrigger = function (handler, eventType) {
-    return triggers.some(function (trigger) {
-      return trigger.getHandlerFunction() === handler &&
-        trigger.getTriggerSourceId() === spreadsheetId &&
-        trigger.getEventType() === eventType;
-    });
-  };
 
-  if (!hasTrigger("ejecutarCambiosDelCurso", ScriptApp.EventType.ON_EDIT)) {
+  // Las hojas son creadas por un proyecto independiente, por lo que antiguamente
+  // se instalaba tambien un onOpen por archivo. Esos triggers solo agregaban un
+  // menu auxiliar y agotaban rapidamente la cuota de triggers del proyecto. Se
+  // eliminan al migrar; el flujo principal depende unicamente del onEdit.
+  triggers.filter(function (trigger) {
+    return trigger.getHandlerFunction() === "onOpen" &&
+      trigger.getEventType() === ScriptApp.EventType.ON_OPEN;
+  }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+
+  // Conserva exactamente un trigger de edicion para esta hoja. Ademas de evitar
+  // duplicados, hacerlo despues de la limpieza libera cuota antes de crear uno.
+  triggers = ScriptApp.getProjectTriggers();
+  const editTriggers = triggers.filter(function (trigger) {
+    return trigger.getHandlerFunction() === "ejecutarCambiosDelCurso" &&
+      trigger.getTriggerSourceId() === spreadsheetId &&
+      trigger.getEventType() === ScriptApp.EventType.ON_EDIT;
+  });
+  editTriggers.slice(1).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+  if (!editTriggers.length) {
     ScriptApp.newTrigger("ejecutarCambiosDelCurso").forSpreadsheet(spreadsheet).onEdit().create();
   }
-  if (!hasTrigger("onOpen", ScriptApp.EventType.ON_OPEN)) {
-    ScriptApp.newTrigger("onOpen").forSpreadsheet(spreadsheet).onOpen().create();
-  }
+
+  triggers = ScriptApp.getProjectTriggers();
   const reminderTriggers = triggers.filter(function (trigger) {
     return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
       trigger.getEventType() === ScriptApp.EventType.CLOCK;
