@@ -7,7 +7,9 @@ const CONFIG_SHEET_NAMES = {
 
 /** Zona horaria civil usada por todos los valores capturados en las hojas. */
 const COURSE_SHEET_TIME_ZONE = "America/Mexico_City";
-const REMINDER_TRIGGER_VERSION = "every-5-minutes-v1";
+// El trigger solo despierta el proceso; isScheduledReminderDue_ decide si toca
+// enviar y garantiza que una misma clave no se repita durante el dia.
+const REMINDER_TRIGGER_VERSION = "hourly-v2";
 
 const COURSE_EXECUTION_CONTROL = {
   CHECKBOX: "B5",
@@ -160,13 +162,13 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
       return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
         trigger.getEventType() === ScriptApp.EventType.CLOCK;
     }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
-    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyMinutes(5).create();
+    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyHours(1).create();
     properties.setProperty("REMINDER_TRIGGER_VERSION", REMINDER_TRIGGER_VERSION);
   } else if (!triggers.some(function (trigger) {
     return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
       trigger.getEventType() === ScriptApp.EventType.CLOCK;
   })) {
-    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyMinutes(5).create();
+    ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().everyHours(1).create();
   }
 }
 

@@ -96,8 +96,8 @@ En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
 aceptar. `recordatorioPendientesCadaDias` y `horaRecordatorioPendientes`
 configuran el correo general con las actividades pendientes. Un trigger cada
-cinco minutos evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
-hora para que los correos no se repitan en cada ejecución.
+hora evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
+hora, y el bot registra cada envío para no mandar más de un recordatorio por día.
 
 Google Sheets guarda cada edición automáticamente. No cambies nombres de
 pestañas, encabezados ni los nombres de campo. Usa
