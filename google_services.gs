@@ -60,7 +60,10 @@ function listCourseWorkForSetup(courseId) {
   do {
     const response = Classroom.Courses.CourseWork.list(courseId, {
       pageSize: 100,
-      pageToken: pageToken
+      pageToken: pageToken,
+      // Classroom no incluye necesariamente los borradores si no se solicitan.
+      // Leer ambos estados evita volver a crear una tarea seleccionada en otra ejecucion.
+      courseWorkStates: ["PUBLISHED", "DRAFT"]
     });
 
     if (response.courseWork) {
@@ -491,10 +494,11 @@ function updateCourseWorkFromConfig(courseId, courseWorkId, config) {
     updateFields.push("topicId");
   }
   if (config.dueDate) {
-    resource.dueDate = config.dueDate;
+    const utcDue = convertCourseSheetDueToUtc_(config.dueDate, config.dueTime);
+    resource.dueDate = utcDue.dueDate;
     updateFields.push("dueDate");
     if (config.dueTime) {
-      resource.dueTime = config.dueTime;
+      resource.dueTime = utcDue.dueTime;
       updateFields.push("dueTime");
     }
   }
@@ -810,14 +814,15 @@ function isScheduledReminderDue_(key, everyDays, hour) {
   const configuredHour = String(hour || "09:00").split(":");
   const now = new Date();
   const scheduledMinutes = Number(configuredHour[0]) * 60 + Number(configuredHour[1] || 0);
-  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const currentParts = Utilities.formatDate(now, COURSE_SHEET_TIME_ZONE, "H,m").split(",");
+  const currentMinutes = Number(currentParts[0]) * 60 + Number(currentParts[1]);
   if (currentMinutes < scheduledMinutes) return false;
   const last = Number(PropertiesService.getScriptProperties().getProperty("REMINDER_SENT:" + key) || 0);
   if (!last) return true;
   const intervalDays = Math.max(0, Number(everyDays) || 0);
   if (intervalDays === 0) {
-    return Utilities.formatDate(new Date(last), Session.getScriptTimeZone(), "yyyy-MM-dd") !==
-      Utilities.formatDate(now, Session.getScriptTimeZone(), "yyyy-MM-dd");
+    return Utilities.formatDate(new Date(last), COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd") !==
+      Utilities.formatDate(now, COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd");
   }
   return now.getTime() - last >= intervalDays * 24 * 60 * 60 * 1000;
 }
@@ -911,11 +916,9 @@ function createCourseWorkFromConfig(creationConfig) {
   };
 
   if (creationConfig.dueDate) {
-    resource.dueDate = creationConfig.dueDate;
-  }
-
-  if (creationConfig.dueTime) {
-    resource.dueTime = creationConfig.dueTime;
+    const utcDue = convertCourseSheetDueToUtc_(creationConfig.dueDate, creationConfig.dueTime);
+    resource.dueDate = utcDue.dueDate;
+    if (creationConfig.dueTime) resource.dueTime = utcDue.dueTime;
   }
 
   if (creationConfig.topicId) {
@@ -932,6 +935,26 @@ function createCourseWorkFromConfig(creationConfig) {
   console.log("La tarea se descubrira automaticamente si su titulo coincide con una regla activa.");
 
   return created;
+}
+
+/** Convierte la fecha/hora civil de CDMX a los campos UTC requeridos por Classroom. */
+function convertCourseSheetDueToUtc_(dueDate, dueTime) {
+  if (!dueDate) return { dueDate: null, dueTime: null };
+  if (!dueTime) return { dueDate: dueDate, dueTime: null };
+
+  const nominalUtc = Date.UTC(
+    Number(dueDate.year), Number(dueDate.month) - 1, Number(dueDate.day),
+    Number(dueTime.hours || 0), Number(dueTime.minutes || 0), Number(dueTime.seconds || 0)
+  );
+  const offsetText = Utilities.formatDate(new Date(nominalUtc), COURSE_SHEET_TIME_ZONE, "Z");
+  const sign = offsetText.charAt(0) === "-" ? -1 : 1;
+  const offsetMinutes = sign * (Number(offsetText.slice(1, 3)) * 60 + Number(offsetText.slice(3, 5)));
+  const instant = new Date(nominalUtc - offsetMinutes * 60 * 1000);
+
+  return {
+    dueDate: { year: instant.getUTCFullYear(), month: instant.getUTCMonth() + 1, day: instant.getUTCDate() },
+    dueTime: { hours: instant.getUTCHours(), minutes: instant.getUTCMinutes(), seconds: instant.getUTCSeconds() }
+  };
 }
 
 /**

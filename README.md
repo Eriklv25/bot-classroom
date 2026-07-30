@@ -86,23 +86,25 @@ estado, fecha y hora de entrega, además de la frecuencia y hora de sus
 recordatorios. Para añadir actividades, completa sus filas y marca
 **crearAhora** en todas las que quieras preparar. La selección no ejecuta nada
 por sí sola: marca **EJECUTAR** en la plantilla para crearlas juntas. Las
-casillas permanecen seleccionadas como referencia. El nombre identifica
-de forma única la actividad: si ya existe en Classroom se actualiza y nunca se
+casillas permanecen seleccionadas como referencia. El bot consulta tanto las
+tareas publicadas como los borradores antes de crear y usa el nombre como
+identificador único de la actividad: si ya existe en Classroom se actualiza y nunca se
 crea un duplicado. La columna **enabled** no crea actividades; habilita la
 revisión automática y los recordatorios de esa tarea.
 
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
 aceptar. `recordatorioPendientesCadaDias` y `horaRecordatorioPendientes`
-configuran el correo general con las actividades pendientes. Un trigger horario
-evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
+configuran el correo general con las actividades pendientes. Un trigger cada
+cinco minutos evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
 hora para que los correos no se repitan en cada ejecución.
 
 Google Sheets guarda cada edición automáticamente. No cambies nombres de
 pestañas, encabezados ni los nombres de campo. Usa
 `AAAA-MM-DD` para fechas (por ejemplo, `2026-08-31`) y `HH:MM` en formato de 24
-horas (por ejemplo, `23:59`). Todas las horas usan la zona `America/Mexico_City`,
-que también aparece en el campo `zonaHoraria` de **Plantilla de curso**. Por
+horas (por ejemplo, `23:59`). Todas las horas se interpretan como hora de CDMX
+con la zona `America/Mexico_City`; el bot las convierte a UTC al enviarlas a
+Classroom. La zona también aparece en el campo `zonaHoraria` de **Plantilla de curso**. Por
 seguridad, el flujo no elimina
 automáticamente participantes, temas ni tareas que quites de la hoja.
 
