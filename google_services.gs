@@ -501,7 +501,12 @@ function updateCourseWorkFromConfig(courseId, courseWorkId, config) {
     updateFields.push("topicId");
   }
   if (config.dueDate) {
-    const utcDue = convertCourseSheetDueToUtc_(config.dueDate, config.dueTime);
+    const utcDue = getFutureCourseWorkDue_(config.dueDate, config.dueTime, config.title);
+    if (!utcDue) {
+      return Classroom.Courses.CourseWork.patch(resource, courseId, courseWorkId, {
+        updateMask: updateFields.join(",")
+      });
+    }
     resource.dueDate = utcDue.dueDate;
     updateFields.push("dueDate");
     if (config.dueTime) {
@@ -1000,9 +1005,12 @@ function createCourseWorkFromConfig(creationConfig) {
   };
 
   if (creationConfig.dueDate) {
-    const utcDue = convertCourseSheetDueToUtc_(creationConfig.dueDate, creationConfig.dueTime);
-    resource.dueDate = utcDue.dueDate;
-    if (creationConfig.dueTime) resource.dueTime = utcDue.dueTime;
+    const utcDue = getFutureCourseWorkDue_(
+      creationConfig.dueDate, creationConfig.dueTime, creationConfig.title);
+    if (utcDue) {
+      resource.dueDate = utcDue.dueDate;
+      if (creationConfig.dueTime) resource.dueTime = utcDue.dueTime;
+    }
   }
 
   if (creationConfig.topicId) {
@@ -1039,6 +1047,31 @@ function convertCourseSheetDueToUtc_(dueDate, dueTime) {
     dueDate: { year: instant.getUTCFullYear(), month: instant.getUTCMonth() + 1, day: instant.getUTCDate() },
     dueTime: { hours: instant.getUTCHours(), minutes: instant.getUTCMinutes(), seconds: instant.getUTCSeconds() }
   };
+}
+
+/**
+ * Devuelve una fecha limite apta para Classroom o la omite si ya vencio.
+ *
+ * Classroom rechaza toda la operacion de creacion o actualizacion cuando se
+ * envia una fecha pasada. Omitirla permite aplicar el resto de los cambios; en
+ * una tarea existente se conserva la fecha que ya tenga en Classroom.
+ */
+function getFutureCourseWorkDue_(dueDate, dueTime, taskTitle, now) {
+  const utcDue = convertCourseSheetDueToUtc_(dueDate, dueTime);
+  const comparisonTime = dueTime
+    ? Date.UTC(
+      utcDue.dueDate.year, utcDue.dueDate.month - 1, utcDue.dueDate.day,
+      utcDue.dueTime.hours || 0, utcDue.dueTime.minutes || 0, utcDue.dueTime.seconds || 0)
+    : Date.UTC(utcDue.dueDate.year, utcDue.dueDate.month - 1, utcDue.dueDate.day, 23, 59, 59);
+  const currentTime = now instanceof Date ? now.getTime() : Date.now();
+
+  if (comparisonTime <= currentTime) {
+    console.log("Se omitio la fecha limite pasada de la tarea '" +
+      String(taskTitle || "sin titulo") + "'. Corrigela en la hoja para actualizarla en Classroom.");
+    return null;
+  }
+
+  return utcDue;
 }
 
 /**

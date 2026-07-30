@@ -112,7 +112,9 @@ pestañas, encabezados ni los nombres de campo. Usa
 `AAAA-MM-DD` para fechas (por ejemplo, `2026-08-31`) y `HH:MM` en formato de 24
 horas (por ejemplo, `23:59`). Todas las horas se interpretan como hora de CDMX
 con la zona `America/Mexico_City`; el bot las convierte a UTC al enviarlas a
-Classroom. La zona también aparece en el campo `zonaHoraria` de **Plantilla de curso**. Por
+Classroom. Si una fecha ya pasó, el bot la omite para que Classroom no rechace
+los demás cambios; corrígela en **Tareas** y vuelve a marcar **EJECUTAR** para
+actualizarla. La zona también aparece en el campo `zonaHoraria` de **Plantilla de curso**. Por
 seguridad, el flujo no elimina
 automáticamente participantes, temas ni tareas que quites de la hoja.
 
