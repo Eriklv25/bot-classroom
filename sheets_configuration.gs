@@ -19,7 +19,7 @@ const TASK_COLUMNS = [
   "maxPoints", "state", "dueDate", "dueTime", "recordatorioCadaDias", "horaRecordatorio"
 ];
 
-const PARTICIPANT_COLUMNS = ["selected", "name", "email"];
+const PARTICIPANT_COLUMNS = ["selected", "name", "email", "rol"];
 
 /** Crea una hoja independiente para un curso nuevo sin modificar hojas anteriores. */
 function createConfigurationSpreadsheet() {
@@ -74,21 +74,12 @@ function elegirCarpetaDeAlmacenamiento() {
   return folderId;
 }
 
-/** Atiende el boton principal y el boton CREAR AHORA de cada fila de Tareas. */
+/** Aplica desde EJECUTAR todos los cambios, incluidas las tareas seleccionadas. */
 function ejecutarCambiosDelCurso(event) {
-  if (event && !isCourseExecutionEdit_(event) && !isTaskCreationEdit_(event)) return null;
+  if (event && !isCourseExecutionEdit_(event)) return null;
   const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
   const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
-  const requestedTaskTitle = event && isTaskCreationEdit_(event)
-    ? String(event.range.getSheet().getRange(event.range.getRow(), 4).getValue() || "").trim()
-    : "";
-  if (event && isTaskCreationEdit_(event) && !requestedTaskTitle) {
-    event.range.setValue(false);
-    throw new Error("Completa nombreActividad antes de marcar crearAhora.");
-  }
-  if (event) {
-    event.range.setValue(false);
-  }
+  if (event) event.range.setValue(false);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(1000)) {
     setCourseExecutionStatus_(templateSheet, "OCUPADO", "Ya hay otra ejecucion en curso.");
@@ -98,6 +89,9 @@ function ejecutarCambiosDelCurso(event) {
     setCourseExecutionStatus_(templateSheet, "EJECUTANDO", "Leyendo la configuracion...");
     loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
     const template = COURSE_SETUP_TEMPLATE;
+    const selectedTaskTitles = readTaskRows_(spreadsheet).filter(function (task) {
+      return task.crearAhora === true;
+    }).map(function (task) { return String(task.nombreActividad || "").trim(); });
     let courseId = String(template.existingCourseId || "").trim();
     let course;
     const created = !courseId;
@@ -111,10 +105,9 @@ function ejecutarCambiosDelCurso(event) {
     syncCourseSpreadsheetFile_(spreadsheet, course, readTemplateFields_(spreadsheet).carpetaAlmacenamiento);
     const setup = createCourseSetupFromTemplate(Object.assign({}, template, {
       courseId: courseId,
-      // Desde Sheets, las tareas nuevas solo se crean mediante crearAhora.
-      // EJECUTAR sigue actualizando las tareas que ya existen en Classroom.
-      createMissingCourseWork: Boolean(requestedTaskTitle),
-      createOnlyCourseWorkTitle: requestedTaskTitle
+      // Las casillas se conservan para mostrar que la tarea ya fue solicitada.
+      createMissingCourseWork: selectedTaskTitles.length > 0,
+      createOnlyCourseWorkTitles: selectedTaskTitles
     }));
     const invitations = inviteStudentsFromTemplate(courseId, template.students || []);
     registerCourseSpreadsheet_(courseId, spreadsheet);
@@ -310,12 +303,19 @@ function writeConfigurationSpreadsheet_(spreadsheet) {
 }
 
 function writeParticipantsSheet_(sheet) {
-  writeTableWithHeaders_(sheet, PARTICIPANT_COLUMNS, COURSE_SETUP_TEMPLATE.students || []);
+  const participants = (COURSE_SETUP_TEMPLATE.students || []).map(function (participant) {
+    return Object.assign({ rol: "ALUMNO" }, participant);
+  });
+  writeTableWithHeaders_(sheet, PARTICIPANT_COLUMNS, participants);
   const editableRows = Math.max((COURSE_SETUP_TEMPLATE.students || []).length + 25, 50);
   sheet.getRange(2, 1, editableRows, 1).insertCheckboxes();
   sheet.getRange(1, 1).setNote("Marca la casilla para invitar a esta persona. Puedes agregar nuevos participantes en las filas vacias.");
+  const roleRule = SpreadsheetApp.newDataValidation().requireValueInList(["ALUMNO", "PROFESOR"], true).build();
+  sheet.getRange(2, 4, editableRows, 1).setDataValidation(roleRule);
+  sheet.getRange(1, 4).setNote("Elige ALUMNO o PROFESOR para definir el rol de la invitacion en Classroom.");
   sheet.setColumnWidth(2, 260);
   sheet.setColumnWidth(3, 280);
+  sheet.setColumnWidth(4, 130);
 }
 
 function writeTemplateSheet_(sheet) {
@@ -370,7 +370,7 @@ function writeTasksSheet_(sheet) {
   writeTableWithHeaders_(sheet, TASK_COLUMNS, rows);
   const editableRows = Math.max(rows.length + 25, 50);
   sheet.getRange(2, 1, editableRows, 2).insertCheckboxes();
-  sheet.getRange(1, 1).setNote("Marca crearAhora solamente en la fila que deseas crear. La casilla vuelve a desmarcarse al iniciar el proceso.");
+  sheet.getRange(1, 1).setNote("Selecciona una o varias tareas y despues marca EJECUTAR en Plantilla de curso. Las casillas permanecen seleccionadas como referencia.");
   sheet.getRange(1, 2).setNote("Activa o desactiva la revision automatica y los recordatorios de esta tarea. No crea la tarea en Classroom.");
   sheet.getRange(1, 13).setNote("Fecha limite en formato AAAA-MM-DD (por ejemplo, 2026-08-31).");
   sheet.getRange(1, 14).setNote("Hora limite en formato HH:MM de 24 horas (por ejemplo, 23:59), usando la zona horaria indicada en Plantilla de curso.");
@@ -390,10 +390,10 @@ function applyCourseTemplate_(spreadsheet) {
   COURSE_SETUP_TEMPLATE.defaultState = values.defaultState || "DRAFT";
   COURSE_SETUP_TEMPLATE.defaultMaxPoints = values.defaultMaxPoints || 100;
   COURSE_SETUP_TEMPLATE.teacherInvitationReminder = Object.assign({}, COURSE_SETUP_TEMPLATE.teacherInvitationReminder, {
-    everyDays: positiveInteger_(values.recordatorioInvitacionCadaDias, 2), hour: normalizeHour_(values.horaRecordatorioInvitacion, "09:00")
+    everyDays: nonNegativeInteger_(values.recordatorioInvitacionCadaDias, 2), hour: normalizeHour_(values.horaRecordatorioInvitacion, "09:00")
   });
   COURSE_SETUP_TEMPLATE.pendingActivitiesReminder = Object.assign({}, COURSE_SETUP_TEMPLATE.pendingActivitiesReminder, {
-    everyDays: positiveInteger_(values.recordatorioPendientesCadaDias, 2), hour: normalizeHour_(values.horaRecordatorioPendientes, "10:00")
+    everyDays: nonNegativeInteger_(values.recordatorioPendientesCadaDias, 2), hour: normalizeHour_(values.horaRecordatorioPendientes, "10:00")
   });
   replaceArray_(COURSE_SETUP_TEMPLATE.students,
     readTable_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS).filter(function (participant) {
@@ -433,6 +433,10 @@ function toTaskRule_(task, courseId) {
 function positiveInteger_(value, fallback) {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : fallback;
+}
+function nonNegativeInteger_(value, fallback) {
+  const number = Number(value);
+  return Number.isInteger(number) && number >= 0 ? number : fallback;
 }
 function normalizeHour_(value, fallback) {
   if (value instanceof Date) return formatTimeParts_({ hours: value.getHours(), minutes: value.getMinutes() });
