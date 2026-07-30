@@ -269,6 +269,7 @@ const COURSE_WORK_CREATION_CONFIGS = [
 const COURSE_SETUP_TEMPLATE = {
   createNewCourse: true,
   existingCourseId: "",
+  reminderTriggerEveryMinutes: 60,
   course: {
     name: "Semestre Agosto-Diciembre 2026",
     section: "Grupo A",

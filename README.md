@@ -95,8 +95,13 @@ revisión automática y los recordatorios de esa tarea.
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
 aceptar. `recordatorioPendientesCadaDias` y `horaRecordatorioPendientes`
-configuran el correo general con las actividades pendientes. Un trigger cada
-hora evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
+configuran el correo general con las actividades pendientes.
+`intervaloTriggerRecordatoriosMinutos` controla cada cuántos minutos despierta
+el trigger (1, 5, 10, 15, 30, 60, 120, 240, 360, 480 o 720). Usa 1 o 5 minutos
+para pruebas rápidas y un intervalo mayor para reducir ejecuciones. El cambio se
+aplica al marcar **EJECUTAR**; como Apps Script utiliza un único trigger para
+todos los cursos, el bot adopta el intervalo más corto de todas las hojas
+registradas. El trigger evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
 hora, y el bot registra cada envío para no mandar más de un recordatorio por día.
 
 Google Sheets guarda cada edición automáticamente. No cambies nombres de

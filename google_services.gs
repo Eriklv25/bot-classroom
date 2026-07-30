@@ -767,7 +767,7 @@ function getParticipantInvitationStatus_(courseId, emails) {
   return status;
 }
 
-/** Punto de entrada horario para todos los recordatorios configurados en la hoja. */
+/** Punto de entrada periodico para todos los recordatorios configurados en la hoja. */
 function procesarRecordatoriosProgramados() {
   loadConfigurationFromSpreadsheet(true);
   const summary = { invitations: [], pendingActivities: null };
