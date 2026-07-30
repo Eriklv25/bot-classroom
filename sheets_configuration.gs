@@ -13,6 +13,9 @@ const COURSE_SHEET_TIME_ZONE = "America/Mexico_City";
 const REMINDER_TRIGGER_INTERVALS_MINUTES = [1, 5, 10, 15, 30, 60, 120, 240, 360, 480, 720];
 const DEFAULT_REMINDER_TRIGGER_MINUTES = 60;
 const REMINDER_TRIGGER_PROPERTY = "REMINDER_TRIGGER_INTERVAL_MINUTES";
+const REMINDER_TRIGGER_MODE_PROPERTY = "REMINDER_TRIGGER_MODE";
+const REMINDER_TRIGGER_MODE = "ONE_SHOT_V1";
+const REMINDER_TRIGGER_MINIMUM_DELAY_MS = 60 * 1000;
 
 const COURSE_EXECUTION_CONTROL = {
   CHECKBOX: "B5",
@@ -181,18 +184,39 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
   const intervalMinutes = getShortestConfiguredReminderTriggerMinutes_(spreadsheet);
   const properties = PropertiesService.getScriptProperties();
   const currentInterval = Number(properties.getProperty(REMINDER_TRIGGER_PROPERTY));
-  if (currentInterval !== intervalMinutes || reminderTriggers.length !== 1) {
+  const currentMode = properties.getProperty(REMINDER_TRIGGER_MODE_PROPERTY);
+  if (currentInterval !== intervalMinutes || currentMode !== REMINDER_TRIGGER_MODE ||
+      reminderTriggers.length !== 1) {
     reminderTriggers.forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
     createReminderClockTrigger_(intervalMinutes);
     properties.setProperty(REMINDER_TRIGGER_PROPERTY, String(intervalMinutes));
+    properties.setProperty(REMINDER_TRIGGER_MODE_PROPERTY, REMINDER_TRIGGER_MODE);
   }
 }
 
-/** Crea el trigger usando exclusivamente las frecuencias admitidas por Apps Script. */
+/**
+ * Programa una sola ejecucion futura.
+ *
+ * No se usa everyMinutes/everyHours: un trigger periodico vuelve a arrancar
+ * aunque la corrida anterior siga trabajando. La siguiente ejecucion se arma
+ * al terminar la actual, de modo que nunca se acumulan invocaciones en cola.
+ */
 function createReminderClockTrigger_(intervalMinutes) {
-  const builder = ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased();
-  if (intervalMinutes < 60) builder.everyMinutes(intervalMinutes).create();
-  else builder.everyHours(intervalMinutes / 60).create();
+  const delayMs = Math.max(REMINDER_TRIGGER_MINIMUM_DELAY_MS, Number(intervalMinutes) * 60 * 1000);
+  return ScriptApp.newTrigger("procesarRecordatoriosProgramados").timeBased().after(delayMs).create();
+}
+
+/** Sustituye cualquier trigger previo por la unica siguiente ejecucion. */
+function scheduleNextReminderRun_(intervalMinutes) {
+  ScriptApp.getProjectTriggers().filter(function (trigger) {
+    return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
+      trigger.getEventType() === ScriptApp.EventType.CLOCK;
+  }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+  createReminderClockTrigger_(intervalMinutes);
+  PropertiesService.getScriptProperties().setProperty(
+    REMINDER_TRIGGER_PROPERTY, String(intervalMinutes));
+  PropertiesService.getScriptProperties().setProperty(
+    REMINDER_TRIGGER_MODE_PROPERTY, REMINDER_TRIGGER_MODE);
 }
 
 /** Usa la frecuencia mas corta para que una hoja no retrase a las demas. */

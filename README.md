@@ -96,9 +96,12 @@ En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
 aceptar. `recordatorioPendientesCadaDias` y `horaRecordatorioPendientes`
 configuran el correo general con las actividades pendientes.
-`intervaloTriggerRecordatoriosMinutos` controla cada cuántos minutos despierta
-el trigger (1, 5, 10, 15, 30, 60, 120, 240, 360, 480 o 720). Usa 1 o 5 minutos
-para pruebas rápidas y un intervalo mayor para reducir ejecuciones. El cambio se
+`intervaloTriggerRecordatoriosMinutos` controla cuánto espera el bot antes de
+programar la siguiente revisión (1, 5, 10, 15, 30, 60, 120, 240, 360, 480 o
+720 minutos). Usa 1 o 5 minutos para pruebas rápidas y un intervalo mayor para
+reducir ejecuciones. La siguiente revisión solo se programa cuando termina la
+actual, por lo que las ejecuciones no se acumulan aunque Classroom tarde en
+responder. El cambio se
 aplica al marcar **EJECUTAR**; como Apps Script utiliza un único trigger para
 todos los cursos, el bot adopta el intervalo más corto de todas las hojas
 registradas. El trigger evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y

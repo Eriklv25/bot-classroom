@@ -774,16 +774,17 @@ function getParticipantInvitationStatus_(courseId, emails) {
 
 /** Punto de entrada periodico para todos los recordatorios configurados en la hoja. */
 function procesarRecordatoriosProgramados() {
-  const startedAt = new Date();
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
+  if (!lock.tryLock(1000)) {
     console.log("Otra ejecucion de recordatorios sigue activa. Se cancela esta corrida.");
     return { skippedBecauseLocked: true, invitations: [], pendingActivities: null };
   }
 
   const summary = { invitations: [], pendingActivities: null, errors: [] };
+  let nextIntervalMinutes = DEFAULT_REMINDER_TRIGGER_MINUTES;
   try {
     const registry = getCourseSpreadsheetRegistry_();
+    nextIntervalMinutes = getShortestConfiguredReminderTriggerMinutes_();
     Object.keys(registry).forEach(function (courseId) {
       try {
         const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
@@ -807,15 +808,40 @@ function procesarRecordatoriosProgramados() {
       }
     });
 
-    // Este lote tambien envia los recordatorios configurados por tarea. Debe
-    // ejecutarse antes de liberar el lock para que dos triggers no recorran y
-    // notifiquen simultaneamente las mismas entregas.
-    summary.pendingActivities = processPendingSubmissionsBatchWithLockHeld_(
-      startedAt, createExecutionTimer(startedAt), createEmptyBatchSummary(startedAt));
+    // Los recordatorios no deben arrancar el lote de calificacion: ese lote
+    // puede usar OpenAI y acercarse al limite de ejecucion. Aqui solo se listan
+    // entregas sin enviar y se mandan las notificaciones que correspondan.
+    summary.pendingActivities = processScheduledTaskReminders_(summary.errors);
     return summary;
   } finally {
-    lock.releaseLock();
+    try {
+      scheduleNextReminderRun_(nextIntervalMinutes);
+    } finally {
+      lock.releaseLock();
+    }
   }
+}
+
+/** Recorre las tareas configuradas sin evaluar ni calificar entregas. */
+function processScheduledTaskReminders_(errors) {
+  loadConfigurationFromSpreadsheet(true);
+  const activeTasks = getActiveTaskConfigs();
+  const summary = { tasksChecked: 0, notificationsChecked: 0 };
+  activeTasks.forEach(function (taskConfig) {
+    try {
+      const courseWork = getCourseWork(taskConfig.courseId, taskConfig.courseWorkId);
+      const unsubmitted = getUnsubmittedSubmissionsForTask(taskConfig, courseWork);
+      sendPendingSubmissionNotifications(taskConfig, courseWork, unsubmitted);
+      summary.tasksChecked++;
+      summary.notificationsChecked += unsubmitted.length;
+    } catch (error) {
+      const message = "No se pudieron procesar recordatorios de " +
+        getTaskLabel(taskConfig) + ": " + errorToPlainText(error);
+      console.log(message);
+      errors.push({ courseId: taskConfig.courseId, message: message });
+    }
+  });
+  return summary;
 }
 
 /** Obtiene las invitaciones pendientes de profesores sin enviar correos todavia. */
