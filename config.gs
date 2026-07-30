@@ -310,8 +310,15 @@ const COURSE_SETUP_TEMPLATE = {
   ],
   teacherInvitationReminder: {
     enabled: true,
+    everyDays: 2,
+    hour: "09:00",
     subject: "Recordatorio: acepta la invitacion al curso de Classroom",
     bodyIntro: "Hola. Sigue pendiente tu invitacion como profesor al curso de Classroom."
+  },
+  pendingActivitiesReminder: {
+    enabled: true,
+    everyDays: 2,
+    hour: "10:00"
   },
   skipExistingCourseWork: true,
   defaultState: "DRAFT",
