@@ -332,9 +332,13 @@ function loadConfigurationFromSpreadsheet(loadAllCourseSpreadsheets) {
   if (loadAllCourseSpreadsheets === true && ids.length) {
     const courses = [], rules = [];
     ids.forEach(function (courseId) {
-      const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
-      readTaskRows_(spreadsheet).forEach(function (task) { rules.push(toTaskRule_(task, courseId)); });
-      courses.push({ enabled: true, courseId: courseId, sendStudentNotifications: true });
+      try {
+        const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
+        readTaskRows_(spreadsheet).forEach(function (task) { rules.push(toTaskRule_(task, courseId)); });
+        courses.push({ enabled: true, courseId: courseId, sendStudentNotifications: true });
+      } catch (error) {
+        console.log("Se omite la configuracion inaccesible del curso " + courseId + ": " + errorToPlainText(error));
+      }
     });
     replaceArray_(COURSE_CONFIGS, courses);
     replaceArray_(TASK_RULES, rules);
