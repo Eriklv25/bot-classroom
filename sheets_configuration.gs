@@ -124,11 +124,22 @@ function isTaskCreationEdit_(event) {
 }
 
 function ensureCourseConfigurationTrigger_(spreadsheet) {
-  const handler = "ejecutarCambiosDelCurso";
-  const exists = ScriptApp.getProjectTriggers().some(function (trigger) {
-    return trigger.getHandlerFunction() === handler && trigger.getTriggerSourceId() === spreadsheet.getId();
-  });
-  if (!exists) ScriptApp.newTrigger(handler).forSpreadsheet(spreadsheet).onEdit().create();
+  const triggers = ScriptApp.getProjectTriggers();
+  const spreadsheetId = spreadsheet.getId();
+  const hasTrigger = function (handler, eventType) {
+    return triggers.some(function (trigger) {
+      return trigger.getHandlerFunction() === handler &&
+        trigger.getTriggerSourceId() === spreadsheetId &&
+        trigger.getEventType() === eventType;
+    });
+  };
+
+  if (!hasTrigger("ejecutarCambiosDelCurso", ScriptApp.EventType.ON_EDIT)) {
+    ScriptApp.newTrigger("ejecutarCambiosDelCurso").forSpreadsheet(spreadsheet).onEdit().create();
+  }
+  if (!hasTrigger("onOpen", ScriptApp.EventType.ON_OPEN)) {
+    ScriptApp.newTrigger("onOpen").forSpreadsheet(spreadsheet).onOpen().create();
+  }
 }
 
 function setCourseExecutionStatus_(sheet, status, result) {
