@@ -70,6 +70,8 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu("Bot Classroom")
     .addItem("Elegir carpeta de almacenamiento", "elegirCarpetaDeAlmacenamiento")
     .addItem("Listar hojas de cursos", "listarHojasDeCursos")
+    .addSeparator()
+    .addItem("Revisar recordatorios ahora", "procesarRecordatoriosAhora")
     .addToUi();
 }
 
@@ -133,9 +135,19 @@ function ejecutarCambiosDelCurso(event) {
     const invitations = inviteStudentsFromTemplate(courseId, template.students || []);
     registerCourseSpreadsheet_(courseId, spreadsheet);
     resetCourseReminderSchedule_(courseId);
+    // ensureCourseConfigurationTrigger_ puede conservar un trigger one-shot que
+    // fue creado con la configuracion anterior. Al terminar EJECUTAR se reemplaza
+    // siempre para que el contador (por ejemplo, cinco minutos) empiece ahora y
+    // exista una proxima ejecucion verificable.
+    const nextReminderMinutes = getShortestConfiguredReminderTriggerMinutes_(spreadsheet);
+    scheduleNextReminderRun_(nextReminderMinutes);
+    console.log("Proxima revision de recordatorios programada en aproximadamente " +
+      nextReminderMinutes + " minuto(s). Handler=procesarRecordatoriosProgramados");
     setCourseExecutionStatus_(templateSheet, "COMPLETADO",
-      (created ? "Curso creado" : "Curso actualizado") + ": " + course.name + " (" + courseId + ")");
-    return { course: course, created: created, setup: setup, studentInvitations: invitations };
+      (created ? "Curso creado" : "Curso actualizado") + ": " + course.name + " (" + courseId +"). " +
+      "Proxima revision de recordatorios en aproximadamente " + nextReminderMinutes + " minuto(s).");
+    return { course: course, created: created, setup: setup, studentInvitations: invitations,
+      nextReminderMinutes: nextReminderMinutes };
   } catch (error) {
     setCourseExecutionStatus_(templateSheet, "ERROR", errorToPlainText(error));
     throw error;
@@ -472,7 +484,12 @@ function ensureReminderTriggerField_(spreadsheet) {
 function configureReminderTriggerFieldRange_(range) {
   range.setDataValidation(SpreadsheetApp.newDataValidation()
     .requireValueInList(REMINDER_TRIGGER_INTERVALS_MINUTES.map(String), true).build())
-    .setNote("Minutos entre revisiones. Opciones rapidas como 1 o 5 sirven para pruebas. Si hay varios cursos, se usa el intervalo mas corto configurado.");
+    .setNote([
+      "Cada cuantos minutos el bot despierta para COMPROBAR si corresponde enviar recordatorios.",
+      "No significa que enviara correos cada ese numero de minutos: las horas, los dias y la proteccion contra duplicados siguen aplicando.",
+      "Ejemplo: con 5, revisa aproximadamente cada 5 minutos; si el correo esta configurado para las 09:00, antes de las 09:00 no lo envia.",
+      "Si hay varios cursos, se usa el intervalo mas corto configurado."
+    ].join("\n"));
 }
 
 function writeTasksSheet_(sheet) {

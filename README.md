@@ -96,12 +96,17 @@ En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
 aceptar. `recordatorioPendientesCadaDias` y `horaRecordatorioPendientes`
 configuran el correo general con las actividades pendientes.
-`intervaloTriggerRecordatoriosMinutos` controla cuánto espera el bot antes de
-programar la siguiente revisión (1, 5, 10, 15, 30, 60, 120, 240, 360, 480 o
-720 minutos). Usa 1 o 5 minutos para pruebas rápidas y un intervalo mayor para
-reducir ejecuciones. La siguiente revisión solo se programa cuando termina la
-actual, por lo que las ejecuciones no se acumulan aunque Classroom tarde en
-responder. El cambio se
+`intervaloTriggerRecordatoriosMinutos` es la frecuencia con la que el bot se
+despierta para **comprobar** si hay algo que enviar (1, 5, 10, 15, 30, 60, 120,
+240, 360, 480 o 720 minutos). No es la frecuencia de envío de correos. Por
+ejemplo, con un intervalo de 5 minutos y una hora de recordatorio de las 09:00,
+el bot puede revisar aproximadamente a las 08:55 y 09:00, pero solo la revisión
+de las 09:00 o posterior queda habilitada para enviar. Después aplican también
+`recordatorio...CadaDias` y la protección contra duplicados, por lo que no se
+manda un correo cada 5 minutos. Usa 1 o 5 minutos para pruebas rápidas y un
+intervalo mayor para reducir ejecuciones. La siguiente revisión solo se programa
+cuando termina la actual, por lo que las ejecuciones no se acumulan aunque
+Classroom tarde en responder. El cambio se
 aplica al marcar **EJECUTAR**; como Apps Script utiliza un único trigger para
 todos los cursos, el bot adopta el intervalo más corto de todas las hojas
 registradas. El trigger evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
@@ -113,6 +118,24 @@ participante o una tarea agregados después de la revisión diaria no tienen que
 esperar hasta el siguiente intervalo de días. Un error al consultar invitaciones
 se registra, pero ya no impide intentar el resumen de actividades pendientes del
 mismo curso.
+
+**EJECUTAR aplica la configuración, pero no envía correos en esa misma
+ejecución.** Los correos salen cuando corre el activador global y ya pasó la hora
+configurada. Para probar o revisar sin esperar esa hora, vuelve a abrir la hoja y
+elige **Bot Classroom > Revisar recordatorios ahora**. Esta acción adelanta la
+primera revisión, pero conserva la frecuencia configurada y la protección que
+evita repetir un correo ya procesado ese mismo día. Una fecha límite igual a la
+fecha actual tampoco está vencida hasta que pase su hora límite; si la tarea no
+tiene `dueTime`, Classroom la considera vencida al terminar el día.
+
+Después de marcar **EJECUTAR**, el bot reemplaza el activador de recordatorios y
+vuelve a iniciar el contador con el intervalo más corto registrado. El resultado
+de la hoja y los registros indican en cuántos minutos se solicitó la próxima
+revisión. El activador es de una sola ejecución y se vuelve a crear al terminar
+cada revisión; por eso Apps Script lo muestra como un activador basado en tiempo,
+no como un activador periódico `cada 5 minutos`. La ejecución es aproximada:
+Apps Script puede iniciarla algunos minutos después del mínimo solicitado.
+
 Los recordatorios de invitación se controlan de manera independiente por curso:
 todo participante marcado en **Participantes**, sea alumno o profesor, puede
 recibir un correo por cada curso cuya invitación no haya aceptado. Si un curso
