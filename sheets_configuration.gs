@@ -132,6 +132,7 @@ function ejecutarCambiosDelCurso(event) {
     }));
     const invitations = inviteStudentsFromTemplate(courseId, template.students || []);
     registerCourseSpreadsheet_(courseId, spreadsheet);
+    resetCourseReminderSchedule_(courseId);
     setCourseExecutionStatus_(templateSheet, "COMPLETADO",
       (created ? "Curso creado" : "Curso actualizado") + ": " + course.name + " (" + courseId + ")");
     return { course: course, created: created, setup: setup, studentInvitations: invitations };

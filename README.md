@@ -108,6 +108,11 @@ registradas. El trigger evalúa estas opciones; cada fila de **Tareas** conserva
 hora, y el bot registra cada envío para no mandar más de un recordatorio por día.
 Si cambias la hora o la frecuencia, esa combinación se considera una programación
 nueva y una revisión realizada con el horario anterior ya no bloquea el envío.
+Al marcar **EJECUTAR**, el curso vuelve a quedar elegible para revisión: así un
+participante o una tarea agregados después de la revisión diaria no tienen que
+esperar hasta el siguiente intervalo de días. Un error al consultar invitaciones
+se registra, pero ya no impide intentar el resumen de actividades pendientes del
+mismo curso.
 Los recordatorios de invitación se controlan de manera independiente por curso:
 todo participante marcado en **Participantes**, sea alumno o profesor, puede
 recibir un correo por cada curso cuya invitación no haya aceptado. Si un curso
