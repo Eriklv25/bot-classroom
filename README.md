@@ -107,8 +107,9 @@ todos los cursos, el bot adopta el intervalo más corto de todas las hojas
 registradas. El trigger evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
 hora, y el bot registra cada envío para no mandar más de un recordatorio por día.
 Los recordatorios de invitación se controlan de manera independiente por curso:
-un profesor inscrito en varios cursos puede recibir un correo por cada curso
-pendiente. Si un curso fue eliminado o dejó de ser accesible, el error queda en
+todo participante marcado en **Participantes**, sea alumno o profesor, puede
+recibir un correo por cada curso cuya invitación no haya aceptado. Si un curso
+fue eliminado o dejó de ser accesible, el error queda en
 el registro de ejecución y no impide procesar los demás cursos.
 
 Para diagnosticar una ejecución lenta, abre **Ejecuciones**, entra en la corrida
