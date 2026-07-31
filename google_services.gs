@@ -2125,15 +2125,30 @@ function getCourseWorkDueDate(courseWork) {
     return null;
   }
 
-  const dueTime = courseWork.dueTime || { hours: 23, minutes: 59, seconds: 0 };
+  // Classroom entrega dueTime en UTC, aunque la hoja y los horarios de los
+  // recordatorios se muestren en la zona horaria del proyecto. Construir esta
+  // fecha con `new Date(year, ...)` reinterpretaba, por ejemplo, 04:30 UTC
+  // como 04:30 de Ciudad de Mexico y retrasaba seis horas el aviso vencido.
+  if (courseWork.dueTime) {
+    return new Date(Date.UTC(
+      courseWork.dueDate.year,
+      courseWork.dueDate.month - 1,
+      courseWork.dueDate.day,
+      courseWork.dueTime.hours || 0,
+      courseWork.dueTime.minutes || 0,
+      courseWork.dueTime.seconds || 0
+    ));
+  }
 
+  // Sin dueTime, conserva el comportamiento documentado: la actividad vence
+  // al terminar el dia civil configurado para el proyecto de Apps Script.
   return new Date(
     courseWork.dueDate.year,
     courseWork.dueDate.month - 1,
     courseWork.dueDate.day,
-    dueTime.hours || 0,
-    dueTime.minutes || 0,
-    dueTime.seconds || 0
+    23,
+    59,
+    0
   );
 }
 
