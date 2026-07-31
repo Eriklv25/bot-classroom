@@ -106,6 +106,8 @@ aplica al marcar **EJECUTAR**; como Apps Script utiliza un único trigger para
 todos los cursos, el bot adopta el intervalo más corto de todas las hojas
 registradas. El trigger evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
 hora, y el bot registra cada envío para no mandar más de un recordatorio por día.
+Si cambias la hora o la frecuencia, esa combinación se considera una programación
+nueva y una revisión realizada con el horario anterior ya no bloquea el envío.
 Los recordatorios de invitación se controlan de manera independiente por curso:
 todo participante marcado en **Participantes**, sea alumno o profesor, puede
 recibir un correo por cada curso cuya invitación no haya aceptado. Si un curso
