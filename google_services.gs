@@ -726,7 +726,7 @@ function sendTeacherInvitationRemindersFromTemplate(skipConfigurationLoad) {
       to: email,
       subject: reminderConfig.subject || "Recordatorio: acepta la invitacion al curso de Classroom",
       body: [
-        reminderConfig.bodyIntro || "Hola. Sigue pendiente tu invitacion como profesor al curso de Classroom.",
+        reminderConfig.bodyIntro || "Hola. Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
         "",
         "Curso: " + (course.name || courseId),
         course.alternateLink ? "Liga: " + course.alternateLink : "",
@@ -817,16 +817,45 @@ function procesarRecordatoriosProgramados() {
         loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
         const config = COURSE_SETUP_TEMPLATE.teacherInvitationReminder || {};
         const invitationKey = "invitaciones:" + courseId;
-        if (config.enabled !== false && isScheduledReminderDue_(invitationKey, config.everyDays, config.hour)) {
-          const invitationCourse = getPendingTeacherInvitationsForCourse_(courseId, config);
-          summary.invitations = summary.invitations.concat(sendTeacherInvitationRemindersForCourse_(invitationCourse));
+        const invitationSchedule = getScheduledReminderStatus_(invitationKey, config.everyDays, config.hour);
+        logReminderProgress_(control, "INVITACIONES_DECISION", {
+          courseId: courseId,
+          enabled: config.enabled !== false,
+          due: invitationSchedule.due,
+          reason: config.enabled === false ? "disabled" : invitationSchedule.reason,
+          scheduledHour: invitationSchedule.scheduledHour,
+          currentHour: invitationSchedule.currentHour,
+          lastCheckedAt: invitationSchedule.lastCheckedAt
+        });
+        if (config.enabled !== false && invitationSchedule.due) {
+          const invitationCourse = getPendingCourseInvitationsForCourse_(courseId, config);
+          const invitationResults = sendCourseInvitationRemindersForCourse_(invitationCourse);
+          summary.invitations = summary.invitations.concat(invitationResults);
+          logReminderProgress_(control, "INVITACIONES_RESULTADO", {
+            courseId: courseId,
+            selectedParticipants: invitationCourse.selectedParticipants,
+            pending: invitationCourse.recipients.length,
+            accepted: invitationCourse.skippedAccepted.length,
+            sent: invitationResults.length
+          });
           markScheduledReminderSent_(invitationKey);
         }
         const pendingConfig = COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {};
-        if (pendingConfig.enabled !== false && isScheduledReminderDue_("pendientes:" + courseId, pendingConfig.everyDays, pendingConfig.hour)) {
+        const pendingKey = "pendientes:" + courseId;
+        const pendingSchedule = getScheduledReminderStatus_(pendingKey, pendingConfig.everyDays, pendingConfig.hour);
+        logReminderProgress_(control, "PENDIENTES_DECISION", {
+          courseId: courseId,
+          enabled: pendingConfig.enabled !== false,
+          due: pendingSchedule.due,
+          reason: pendingConfig.enabled === false ? "disabled" : pendingSchedule.reason,
+          scheduledHour: pendingSchedule.scheduledHour,
+          currentHour: pendingSchedule.currentHour,
+          lastCheckedAt: pendingSchedule.lastCheckedAt
+        });
+        if (pendingConfig.enabled !== false && pendingSchedule.due) {
           const pendingResult = sendPendingActivitiesSummary_(courseId, control);
           summary["pendingActivities:" + courseId] = pendingResult;
-          if (!pendingResult.incomplete) markScheduledReminderSent_("pendientes:" + courseId);
+          if (!pendingResult.incomplete) markScheduledReminderSent_(pendingKey);
           else summary.incomplete = true;
         }
         logReminderProgress_(control, "CURSO_FIN", { courseId: courseId });
@@ -925,26 +954,34 @@ function hasReminderTimeRemaining_(control, nextStage) {
   return false;
 }
 
-/** Obtiene las invitaciones pendientes de profesores sin enviar correos todavia. */
-function getPendingTeacherInvitationsForCourse_(courseId, reminderConfig) {
-  const selectedTeachers = (COURSE_SETUP_TEMPLATE.students || []).filter(function (participant) {
-    const role = String(participant && (participant.rol || participant.role) || "").trim().toUpperCase();
-    return participant && participant.selected === true && role === "PROFESOR";
-  }).map(function (participant) { return participant.email; });
-  const status = getParticipantInvitationStatus_(courseId, selectedTeachers);
+/** Reune todos los participantes seleccionados que aun no aceptan el curso. */
+function getPendingCourseInvitationsForCourse_(courseId, reminderConfig) {
+  // La invitacion al curso tambien queda pendiente para alumnos. Limitar este
+  // recordatorio a PROFESOR dejaba fuera silenciosamente a los participantes
+  // seleccionados con rol ALUMNO, aunque todavia no hubieran aceptado.
+  const selectedEmails = [];
+  const seenEmails = {};
+  (COURSE_SETUP_TEMPLATE.students || []).forEach(function (participant) {
+    const email = String(participant && participant.email || "").trim().toLowerCase();
+    if (!participant || participant.selected !== true || !email || seenEmails[email]) return;
+    seenEmails[email] = true;
+    selectedEmails.push(email);
+  });
+  const status = getParticipantInvitationStatus_(courseId, selectedEmails);
   const course = Classroom.Courses.get(courseId);
   return {
     courseId: courseId,
     name: course.name || courseId,
     alternateLink: course.alternateLink || "",
+    selectedParticipants: selectedEmails.length,
     recipients: status.pending.concat(status.missingInvitation),
     skippedAccepted: status.accepted,
     reminderConfig: reminderConfig || {}
   };
 }
 
-/** Envia un correo independiente por curso a cada profesor pendiente. */
-function sendTeacherInvitationRemindersForCourse_(course) {
+/** Envia un correo independiente por curso a cada participante pendiente. */
+function sendCourseInvitationRemindersForCourse_(course) {
   const summaries = [];
   const reminderConfig = course.reminderConfig || {};
   (course.recipients || []).forEach(function (email) {
@@ -952,7 +989,7 @@ function sendTeacherInvitationRemindersForCourse_(course) {
       to: email,
       subject: reminderConfig.subject || "Recordatorio: acepta la invitacion al curso de Classroom",
       body: [
-        reminderConfig.bodyIntro || "Hola. Sigue pendiente tu invitacion como profesor al curso de Classroom.",
+        reminderConfig.bodyIntro || "Hola. Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
         "",
         "Curso: " + course.name,
         course.alternateLink ? "Liga: " + course.alternateLink : "",
@@ -1010,24 +1047,46 @@ function sendPendingActivitiesSummary_(courseId, control) {
 }
 
 function isScheduledReminderDue_(key, everyDays, hour) {
+  return getScheduledReminderStatus_(key, everyDays, hour).due;
+}
+
+/** Explica por que una frecuencia programada se ejecuta o se omite. */
+function getScheduledReminderStatus_(key, everyDays, hour) {
   const configuredHour = String(hour || "09:00").split(":");
   const now = new Date();
   const scheduledMinutes = Number(configuredHour[0]) * 60 + Number(configuredHour[1] || 0);
   const currentParts = Utilities.formatDate(now, COURSE_SHEET_TIME_ZONE, "H,m").split(",");
   const currentMinutes = Number(currentParts[0]) * 60 + Number(currentParts[1]);
-  if (currentMinutes < scheduledMinutes) return false;
+  const status = {
+    due: false,
+    reason: "before_scheduled_hour",
+    scheduledHour: String(hour || "09:00"),
+    currentHour: Utilities.formatDate(now, COURSE_SHEET_TIME_ZONE, "HH:mm"),
+    lastCheckedAt: null
+  };
+  if (currentMinutes < scheduledMinutes) return status;
   const last = Number(PropertiesService.getScriptProperties().getProperty("REMINDER_SENT:" + key) || 0);
-  if (!last) return true;
+  if (!last) {
+    status.due = true;
+    status.reason = "never_checked";
+    return status;
+  }
+  status.lastCheckedAt = Utilities.formatDate(new Date(last), COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd HH:mm");
   const today = Utilities.formatDate(now, COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd");
   const lastDay = Utilities.formatDate(new Date(last), COURSE_SHEET_TIME_ZONE, "yyyy-MM-dd");
-  if (today === lastDay) return false;
+  if (today === lastDay) {
+    status.reason = "already_checked_today";
+    return status;
+  }
 
   // Se comparan dias civiles, no bloques moviles de 24 horas. Asi un trigger
   // que se retrasa unos minutos no desplaza para siempre el siguiente correo.
   const intervalDays = Math.max(1, Number(everyDays) || 1);
   const todayNumber = Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)) - 1, Number(today.slice(8, 10)));
   const lastDayNumber = Date.UTC(Number(lastDay.slice(0, 4)), Number(lastDay.slice(5, 7)) - 1, Number(lastDay.slice(8, 10)));
-  return (todayNumber - lastDayNumber) / (24 * 60 * 60 * 1000) >= intervalDays;
+  status.due = (todayNumber - lastDayNumber) / (24 * 60 * 60 * 1000) >= intervalDays;
+  status.reason = status.due ? "interval_elapsed" : "interval_not_elapsed";
+  return status;
 }
 
 function markScheduledReminderSent_(key) {
