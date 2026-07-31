@@ -95,7 +95,9 @@ revisión automática y los recordatorios de esa tarea.
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
 aceptar. `recordatorioPendientesCadaDias` y `horaRecordatorioPendientes`
-configuran el correo general con las actividades pendientes.
+configuran el correo general con las actividades vencidas que siguen pendientes.
+Las actividades cuya fecha limite aun no pasa y aquellas que no tienen fecha
+limite no se incluyen en este recordatorio.
 `intervaloTriggerRecordatoriosMinutos` es la frecuencia con la que el bot se
 despierta para **comprobar** si hay algo que enviar (1, 5, 10, 15, 30, 60, 120,
 240, 360, 480 o 720 minutos). No es la frecuencia de envío de correos. Por
