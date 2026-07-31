@@ -838,7 +838,7 @@ function procesarRecordatoriosProgramados() {
             accepted: invitationCourse.skippedAccepted.length,
             sent: invitationResults.length
           });
-          markScheduledReminderSent_(invitationKey);
+          markScheduledReminderSent_(invitationKey, config.everyDays, config.hour);
         }
         const pendingConfig = COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {};
         const pendingKey = "pendientes:" + courseId;
@@ -855,7 +855,9 @@ function procesarRecordatoriosProgramados() {
         if (pendingConfig.enabled !== false && pendingSchedule.due) {
           const pendingResult = sendPendingActivitiesSummary_(courseId, control);
           summary["pendingActivities:" + courseId] = pendingResult;
-          if (!pendingResult.incomplete) markScheduledReminderSent_(pendingKey);
+          if (!pendingResult.incomplete) {
+            markScheduledReminderSent_(pendingKey, pendingConfig.everyDays, pendingConfig.hour);
+          }
           else summary.incomplete = true;
         }
         logReminderProgress_(control, "CURSO_FIN", { courseId: courseId });
@@ -1065,7 +1067,12 @@ function getScheduledReminderStatus_(key, everyDays, hour) {
     lastCheckedAt: null
   };
   if (currentMinutes < scheduledMinutes) return status;
-  const last = Number(PropertiesService.getScriptProperties().getProperty("REMINDER_SENT:" + key) || 0);
+  // La frecuencia y la hora forman parte de la programacion. Si el usuario
+  // cambia cualquiera de ellas, el nuevo horario debe tener su propio estado;
+  // de lo contrario una revision hecha con el horario anterior bloquea el
+  // recordatorio nuevo durante el resto del dia.
+  const scheduleKey = getScheduledReminderPropertyKey_(key, everyDays, hour);
+  const last = Number(PropertiesService.getScriptProperties().getProperty(scheduleKey) || 0);
   if (!last) {
     status.due = true;
     status.reason = "never_checked";
@@ -1089,8 +1096,16 @@ function getScheduledReminderStatus_(key, everyDays, hour) {
   return status;
 }
 
-function markScheduledReminderSent_(key) {
-  PropertiesService.getScriptProperties().setProperty("REMINDER_SENT:" + key, String(new Date().getTime()));
+function markScheduledReminderSent_(key, everyDays, hour) {
+  const scheduleKey = getScheduledReminderPropertyKey_(key, everyDays, hour);
+  PropertiesService.getScriptProperties().setProperty(scheduleKey, String(new Date().getTime()));
+}
+
+/** Separa el historial de envio de cada combinacion de frecuencia y hora. */
+function getScheduledReminderPropertyKey_(key, everyDays, hour) {
+  const intervalDays = Math.max(1, Number(everyDays) || 1);
+  const scheduledHour = String(hour || "09:00").trim();
+  return "REMINDER_SENT:" + key + ":cada=" + intervalDays + ":hora=" + scheduledHour;
 }
 
 /**
@@ -1862,14 +1877,16 @@ function sendPendingSubmissionNotifications(taskConfig, courseWork, submissions)
     if (CONFIG.ENABLE_OVERDUE_NOTICES && isSubmissionOverdue(courseWork, submission)) {
       if (isScheduledReminderDue_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour) &&
           sendOverdueReminder(taskConfig, courseWork, submission)) {
-        markScheduledReminderSent_(reminderKey);
+        markScheduledReminderSent_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour);
       }
       return;
     }
 
     if (CONFIG.ENABLE_REMINDERS && getCourseWorkDueDate(courseWork) &&
         isScheduledReminderDue_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour)) {
-      if (sendDueSoonReminder(taskConfig, courseWork, submission)) markScheduledReminderSent_(reminderKey);
+      if (sendDueSoonReminder(taskConfig, courseWork, submission)) {
+        markScheduledReminderSent_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour);
+      }
     }
   });
 }
