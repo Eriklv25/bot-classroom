@@ -98,6 +98,9 @@ aceptar. `recordatorioPendientesCadaDias` y `horaRecordatorioPendientes`
 configuran el correo general con las actividades vencidas que siguen pendientes.
 Las actividades cuya fecha limite aun no pasa y aquellas que no tienen fecha
 limite no se incluyen en este recordatorio.
+La comparación respeta también la hora límite informada por Classroom; por
+ejemplo, una actividad con fecha de hoy y hora `00:30` ya se considera vencida
+a partir de esa hora, sin esperar hasta las `23:59`.
 `intervaloTriggerRecordatoriosMinutos` es la frecuencia con la que el bot se
 despierta para **comprobar** si hay algo que enviar (1, 5, 10, 15, 30, 60, 120,
 240, 360, 480 o 720 minutos). No es la frecuencia de envío de correos. Por
