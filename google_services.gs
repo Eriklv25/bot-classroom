@@ -1032,7 +1032,7 @@ function sendCourseInvitationRemindersForCourse_(course) {
   return summaries;
 }
 
-/** Envia a cada participante un solo correo con sus actividades aun sin entregar. */
+/** Envia a cada participante un solo correo con sus actividades vencidas sin entregar. */
 function sendPendingActivitiesSummary_(courseId, control) {
   const pendingByEmail = {};
   const emailByUserId = {};
@@ -1040,6 +1040,9 @@ function sendPendingActivitiesSummary_(courseId, control) {
   for (let workIndex = 0; workIndex < works.length; workIndex++) {
     const work = works[workIndex];
     if (work.state !== "PUBLISHED" || work.workType !== "ASSIGNMENT") continue;
+    // El resumen general solo reclama actividades cuya fecha limite ya paso.
+    // Las actividades futuras o sin fecha limite no deben aparecer en el correo.
+    if (!isCourseWorkOverdue(work)) continue;
     if (!hasReminderTimeRemaining_(control, "resumen:" + courseId + ":" + work.id)) {
       return { sent: [], incomplete: true, worksChecked: workIndex };
     }
@@ -1069,7 +1072,7 @@ function sendPendingActivitiesSummary_(courseId, control) {
     MailApp.sendEmail({
       to: email,
       subject: "Actividades pendientes: " + (course.name || courseId),
-      body: ["Hola.", "", "Estas actividades siguen pendientes:", "- " + pendingByEmail[email].join("\n- "), "", "Revisa el curso en Google Classroom."].join("\n")
+      body: ["Hola.", "", "Estas actividades vencidas siguen pendientes:", "- " + pendingByEmail[email].join("\n- "), "", "Revisa el curso en Google Classroom."].join("\n")
     });
     sent.push({ email: email, activities: pendingByEmail[email].length });
   });
@@ -2054,8 +2057,20 @@ function isSubmissionOverdue(courseWork, submission) {
     return true;
   }
 
+  return isCourseWorkOverdue(courseWork);
+}
+
+/**
+ * Indica si una actividad ya paso su fecha limite.
+ *
+ * Recibe: CourseWork y, opcionalmente, la fecha actual para pruebas.
+ * Devuelve: false cuando no existe fecha limite o todavia no ha vencido.
+ * Se usa: para filtrar el resumen general y decidir avisos vencidos.
+ */
+function isCourseWorkOverdue(courseWork, now) {
   const dueDate = getCourseWorkDueDate(courseWork);
-  return dueDate ? new Date().getTime() > dueDate.getTime() : false;
+  const currentDate = now || new Date();
+  return dueDate ? currentDate.getTime() > dueDate.getTime() : false;
 }
 
 /**
