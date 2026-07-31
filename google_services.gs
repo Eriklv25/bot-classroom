@@ -778,6 +778,23 @@ function getParticipantInvitationStatus_(courseId, emails) {
   return status;
 }
 
+// La accion manual puede adelantar solamente la hora de la primera revision.
+// La frecuencia y la proteccion contra duplicados del mismo dia se conservan.
+var REMINDER_IGNORE_SCHEDULED_HOUR_ = false;
+
+/**
+ * Permite comprobar inmediatamente invitaciones y actividades desde el menu.
+ * No vuelve a enviar una programacion que ya fue procesada hoy.
+ */
+function procesarRecordatoriosAhora() {
+  REMINDER_IGNORE_SCHEDULED_HOUR_ = true;
+  try {
+    return procesarRecordatoriosProgramados();
+  } finally {
+    REMINDER_IGNORE_SCHEDULED_HOUR_ = false;
+  }
+}
+
 /** Punto de entrada periodico para todos los recordatorios configurados en la hoja. */
 function procesarRecordatoriosProgramados() {
   const startedAt = new Date();
@@ -1077,7 +1094,7 @@ function getScheduledReminderStatus_(key, everyDays, hour) {
     currentHour: Utilities.formatDate(now, COURSE_SHEET_TIME_ZONE, "HH:mm"),
     lastCheckedAt: null
   };
-  if (currentMinutes < scheduledMinutes) return status;
+  if (currentMinutes < scheduledMinutes && !REMINDER_IGNORE_SCHEDULED_HOUR_) return status;
   // La frecuencia y la hora forman parte de la programacion. Si el usuario
   // cambia cualquiera de ellas, el nuevo horario debe tener su propio estado;
   // de lo contrario una revision hecha con el horario anterior bloquea el
