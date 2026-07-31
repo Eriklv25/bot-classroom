@@ -76,6 +76,10 @@ function listCourseWorkForSetup(courseId, options) {
           workType: courseWork.workType,
           maxPoints: courseWork.maxPoints || null,
           dueDate: courseWork.dueDate || null,
+          // dueTime es indispensable para decidir si una actividad que vence
+          // hoy ya esta atrasada. Sin copiarlo, getCourseWorkDueDate usaba
+          // 23:59 y el resumen diario podia omitir una entrega ya vencida.
+          dueTime: courseWork.dueTime || null,
           alternateLink: courseWork.alternateLink || ""
         });
       });
@@ -883,6 +887,14 @@ function procesarRecordatoriosProgramados() {
         if (pendingConfig.enabled !== false && pendingSchedule.due) {
           const pendingResult = sendPendingActivitiesSummary_(courseId, control);
           summary["pendingActivities:" + courseId] = pendingResult;
+          logReminderProgress_(control, "PENDIENTES_RESULTADO", {
+            courseId: courseId,
+            worksChecked: pendingResult.worksChecked,
+            overdueWorks: pendingResult.overdueWorks,
+            recipients: pendingResult.recipients,
+            sent: pendingResult.sent.length,
+            incomplete: pendingResult.incomplete
+          });
           if (!pendingResult.incomplete) {
             markScheduledReminderSent_(pendingKey, pendingConfig.everyDays, pendingConfig.hour);
           }
@@ -1037,12 +1049,14 @@ function sendPendingActivitiesSummary_(courseId, control) {
   const pendingByEmail = {};
   const emailByUserId = {};
   const works = listCourseWorkForSetup(courseId);
+  let overdueWorks = 0;
   for (let workIndex = 0; workIndex < works.length; workIndex++) {
     const work = works[workIndex];
     if (work.state !== "PUBLISHED" || work.workType !== "ASSIGNMENT") continue;
     // El resumen general solo reclama actividades cuya fecha limite ya paso.
     // Las actividades futuras o sin fecha limite no deben aparecer en el correo.
     if (!isCourseWorkOverdue(work)) continue;
+    overdueWorks++;
     if (!hasReminderTimeRemaining_(control, "resumen:" + courseId + ":" + work.id)) {
       return { sent: [], incomplete: true, worksChecked: workIndex };
     }
@@ -1076,7 +1090,13 @@ function sendPendingActivitiesSummary_(courseId, control) {
     });
     sent.push({ email: email, activities: pendingByEmail[email].length });
   });
-  return { sent: sent, incomplete: false, worksChecked: works.length };
+  return {
+    sent: sent,
+    incomplete: false,
+    worksChecked: works.length,
+    overdueWorks: overdueWorks,
+    recipients: Object.keys(pendingByEmail).length
+  };
 }
 
 function isScheduledReminderDue_(key, everyDays, hour) {
