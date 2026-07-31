@@ -828,17 +828,28 @@ function procesarRecordatoriosProgramados() {
           lastCheckedAt: invitationSchedule.lastCheckedAt
         });
         if (config.enabled !== false && invitationSchedule.due) {
-          const invitationCourse = getPendingCourseInvitationsForCourse_(courseId, config);
-          const invitationResults = sendCourseInvitationRemindersForCourse_(invitationCourse);
-          summary.invitations = summary.invitations.concat(invitationResults);
-          logReminderProgress_(control, "INVITACIONES_RESULTADO", {
-            courseId: courseId,
-            selectedParticipants: invitationCourse.selectedParticipants,
-            pending: invitationCourse.recipients.length,
-            accepted: invitationCourse.skippedAccepted.length,
-            sent: invitationResults.length
-          });
-          markScheduledReminderSent_(invitationKey, config.everyDays, config.hour);
+          try {
+            const invitationCourse = getPendingCourseInvitationsForCourse_(courseId, config);
+            const invitationResults = sendCourseInvitationRemindersForCourse_(invitationCourse);
+            summary.invitations = summary.invitations.concat(invitationResults);
+            logReminderProgress_(control, "INVITACIONES_RESULTADO", {
+              courseId: courseId,
+              selectedParticipants: invitationCourse.selectedParticipants,
+              pending: invitationCourse.recipients.length,
+              accepted: invitationCourse.skippedAccepted.length,
+              sent: invitationResults.length
+            });
+            markScheduledReminderSent_(invitationKey, config.everyDays, config.hour);
+          } catch (invitationError) {
+            const invitationMessage = "No se pudieron procesar invitaciones del curso " + courseId +
+              "; se intentaran los recordatorios de pendientes: " + errorToPlainText(invitationError);
+            logReminderProgress_(control, "INVITACIONES_ERROR", {
+              courseId: courseId,
+              message: invitationMessage,
+              stack: invitationError && invitationError.stack || ""
+            });
+            summary.errors.push({ courseId: courseId, message: invitationMessage });
+          }
         }
         const pendingConfig = COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {};
         const pendingKey = "pendientes:" + courseId;
@@ -1106,6 +1117,19 @@ function getScheduledReminderPropertyKey_(key, everyDays, hour) {
   const intervalDays = Math.max(1, Number(everyDays) || 1);
   const scheduledHour = String(hour || "09:00").trim();
   return "REMINDER_SENT:" + key + ":cada=" + intervalDays + ":hora=" + scheduledHour;
+}
+
+/** Permite revisar de inmediato cambios de participantes, tareas u horarios. */
+function resetCourseReminderSchedule_(courseId) {
+  const properties = PropertiesService.getScriptProperties();
+  const prefix = "REMINDER_SENT:";
+  const courseMarker = ":" + String(courseId) + ":";
+  const keys = Object.keys(properties.getProperties()).filter(function (key) {
+    return key.indexOf(prefix) === 0 && key.indexOf(courseMarker) !== -1;
+  });
+  keys.forEach(function (key) { properties.deleteProperty(key); });
+  console.log("Programacion de recordatorios reiniciada para curso " + courseId +
+    "; claves eliminadas=" + keys.length);
 }
 
 /**
