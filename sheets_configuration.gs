@@ -101,8 +101,10 @@ function ejecutarCambiosDelCurso(event) {
   if (event && event.source) ensureCourseRetirementControl_(event.source);
   if (event && isCourseRegistryRemovalEdit_(event)) {
     const courseId = String(event.value || "").trim();
-    event.range.clearContent();
     const result = retirarCursoDelRegistro(courseId);
+    // Conserva el ID visible si la operacion falla (por ejemplo, si otra
+    // ejecucion mantiene el lock) para que el usuario pueda volver a intentar.
+    event.range.clearContent();
     const templateSheet = requireSheet_(event.source, CONFIG_SHEET_NAMES.TEMPLATE);
     setCourseExecutionStatus_(templateSheet, result.removed ? "CURSO RETIRADO" : "SIN CAMBIOS",
       result.removed
@@ -344,19 +346,32 @@ function retirarCursoDelRegistro(courseId) {
   const cleanCourseId = String(courseId || "").trim();
   if (!cleanCourseId) throw new Error("Indica el courseId que deseas retirar.");
 
-  const registry = getCourseSpreadsheetRegistry_();
-  if (!Object.prototype.hasOwnProperty.call(registry, cleanCourseId)) {
-    return { courseId: cleanCourseId, removed: false, reason: "not_registered" };
+  // La retirada es una operacion read-modify-write. Sin el mismo ScriptLock
+  // que usan la configuracion y los recordatorios, varias ediciones seguidas
+  // pueden leer el registro antiguo y la ultima escritura vuelve a introducir
+  // los IDs que las anteriores acababan de quitar.
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(REMINDER_SAFE_RUNTIME_MS)) {
+    throw new Error("No se pudo retirar el curso porque hay otra ejecucion en curso. " +
+      "El ID permanece en la celda para volver a intentarlo.");
   }
+  try {
+    const registry = getCourseSpreadsheetRegistry_();
+    if (!Object.prototype.hasOwnProperty.call(registry, cleanCourseId)) {
+      return { courseId: cleanCourseId, removed: false, reason: "not_registered" };
+    }
 
-  const spreadsheetId = registry[cleanCourseId];
-  delete registry[cleanCourseId];
-  PropertiesService.getScriptProperties().setProperty(
-    PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS, JSON.stringify(registry));
-  resetCourseReminderSchedule_(cleanCourseId);
-  console.log("Curso retirado del registro: " + cleanCourseId +
-    ". La hoja y el curso de Classroom no fueron eliminados.");
-  return { courseId: cleanCourseId, spreadsheetId: spreadsheetId, removed: true };
+    const spreadsheetId = registry[cleanCourseId];
+    delete registry[cleanCourseId];
+    PropertiesService.getScriptProperties().setProperty(
+      PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS, JSON.stringify(registry));
+    resetCourseReminderSchedule_(cleanCourseId);
+    console.log("Curso retirado del registro: " + cleanCourseId +
+      ". La hoja y el curso de Classroom no fueron eliminados.");
+    return { courseId: cleanCourseId, spreadsheetId: spreadsheetId, removed: true };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** Devuelve y registra en consola los enlaces de todas las hojas de curso conocidas. */

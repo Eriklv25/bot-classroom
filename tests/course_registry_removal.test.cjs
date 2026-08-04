@@ -15,7 +15,18 @@ assert.notEqual(end, -1, "No se encontro el final de retirarCursoDelRegistro");
 
 let storedRegistry = { "111": "sheet-old", "222": "sheet-current" };
 let resetCourseId = null;
+let lockReleased = false;
 global.PROPERTY_KEYS = { COURSE_CONFIG_SPREADSHEETS: "COURSES" };
+global.REMINDER_SAFE_RUNTIME_MS = 240000;
+global.LockService = {
+  getScriptLock: () => ({
+    tryLock: timeout => {
+      assert.equal(timeout, 240000);
+      return true;
+    },
+    releaseLock: () => { lockReleased = true; }
+  })
+};
 global.getCourseSpreadsheetRegistry_ = () => JSON.parse(JSON.stringify(storedRegistry));
 global.PropertiesService = {
   getScriptProperties: () => ({
@@ -34,6 +45,7 @@ assert.deepEqual(retirarCursoDelRegistro(" 111 "), {
 });
 assert.deepEqual(storedRegistry, { "222": "sheet-current" });
 assert.equal(resetCourseId, "111");
+assert.equal(lockReleased, true, "La retirada debe liberar siempre el ScriptLock");
 assert.deepEqual(retirarCursoDelRegistro("999"), {
   courseId: "999", removed: false, reason: "not_registered"
 });
