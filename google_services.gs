@@ -819,7 +819,20 @@ function procesarRecordatoriosProgramados() {
     return { runId: runId, skippedBecauseLocked: true, invitations: [], pendingActivities: null };
   }
 
-  const summary = { runId: runId, invitations: [], pendingActivities: null, errors: [], incomplete: false };
+  const summary = {
+    runId: runId,
+    invitations: [],
+    pendingActivities: null,
+    errors: [],
+    unavailableCourses: [],
+    incomplete: false
+  };
+  // Un 404 de Classroom significa que la cuenta del trigger no puede ver el
+  // curso (o que el curso ya no existe). Recordarlo durante toda la corrida
+  // evita repetir Students.list, CourseWork.list y el descubrimiento de tareas
+  // para el mismo id; esa cascada de llamadas puede terminar en INTERNAL antes
+  // de que Apps Script alcance nuestro limite seguro.
+  const unavailableCourseIds = {};
   let nextIntervalMinutes = DEFAULT_REMINDER_TRIGGER_MINUTES;
   try {
     const registry = getCourseSpreadsheetRegistry_();
@@ -828,6 +841,8 @@ function procesarRecordatoriosProgramados() {
     const courseIds = Object.keys(registry);
     for (let courseIndex = 0; courseIndex < courseIds.length; courseIndex++) {
       const courseId = courseIds[courseIndex];
+      let courseDisplayName = "";
+      let courseSpreadsheetUrl = "";
       if (!hasReminderTimeRemaining_(control, "curso:" + courseId)) {
         summary.incomplete = true;
         break;
@@ -835,7 +850,11 @@ function procesarRecordatoriosProgramados() {
       try {
         logReminderProgress_(control, "CURSO_INICIO", { courseId: courseId, index: courseIndex + 1 });
         const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
+        courseDisplayName = spreadsheet.getName() || "";
+        courseSpreadsheetUrl = spreadsheet.getUrl() || "";
         loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
+        courseDisplayName = String(COURSE_SETUP_TEMPLATE.course && COURSE_SETUP_TEMPLATE.course.name ||
+          courseDisplayName || "").trim();
         const config = COURSE_SETUP_TEMPLATE.teacherInvitationReminder || {};
         const invitationKey = "invitaciones:" + courseId;
         const invitationSchedule = getScheduledReminderStatus_(invitationKey, config.everyDays, config.hour);
@@ -870,7 +889,19 @@ function procesarRecordatoriosProgramados() {
               stack: invitationError && invitationError.stack || ""
             });
             summary.errors.push({ courseId: courseId, message: invitationMessage });
+            if (isClassroomCourseUnavailableError_(invitationError)) {
+              unavailableCourseIds[String(courseId)] = true;
+              rememberUnavailableCourse_(summary.unavailableCourses, courseId,
+                courseDisplayName, courseSpreadsheetUrl);
+            }
           }
+        }
+        if (unavailableCourseIds[String(courseId)]) {
+          logReminderProgress_(control, "CURSO_OMITIDO_NO_DISPONIBLE", {
+            courseId: courseId,
+            message: "Classroom devolvio Requested entity was not found; no se haran mas llamadas para este curso en esta corrida."
+          });
+          continue;
         }
         const pendingConfig = COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {};
         const pendingKey = "pendientes:" + courseId;
@@ -905,6 +936,11 @@ function procesarRecordatoriosProgramados() {
         const message = "No se pudo procesar recordatorios del curso " + courseId + ": " + errorToPlainText(error);
         logReminderProgress_(control, "CURSO_ERROR", { courseId: courseId, message: message, stack: error && error.stack || "" });
         summary.errors.push({ courseId: courseId, message: message });
+        if (isClassroomCourseUnavailableError_(error)) {
+          unavailableCourseIds[String(courseId)] = true;
+          rememberUnavailableCourse_(summary.unavailableCourses, courseId,
+            courseDisplayName, courseSpreadsheetUrl);
+        }
       }
     }
 
@@ -912,8 +948,14 @@ function procesarRecordatoriosProgramados() {
     // puede usar OpenAI y acercarse al limite de ejecucion. Aqui solo se listan
     // entregas sin enviar y se mandan las notificaciones que correspondan.
     if (!summary.incomplete && hasReminderTimeRemaining_(control, "recordatorios_por_tarea")) {
-      summary.pendingActivities = processScheduledTaskReminders_(summary.errors, control);
+      summary.pendingActivities = processScheduledTaskReminders_(summary.errors, control, unavailableCourseIds);
       summary.incomplete = summary.pendingActivities.incomplete;
+    }
+    if (summary.unavailableCourses.length) {
+      logReminderProgress_(control, "RESUMEN_CURSOS_NO_DISPONIBLES", {
+        total: summary.unavailableCourses.length,
+        courses: summary.unavailableCourses
+      });
     }
     logReminderProgress_(control, "FIN", summary);
     return summary;
@@ -935,10 +977,11 @@ function procesarRecordatoriosProgramados() {
 }
 
 /** Recorre las tareas configuradas sin evaluar ni calificar entregas. */
-function processScheduledTaskReminders_(errors, control) {
+function processScheduledTaskReminders_(errors, control, unavailableCourseIds) {
   loadConfigurationFromSpreadsheet(true);
   const activeTasks = getActiveTaskConfigs({
     logCourseWorkDetails: false,
+    skipCourseIds: unavailableCourseIds || {},
     shouldContinue: function (courseId) {
       return hasReminderTimeRemaining_(control, "descubrir_tareas:" + courseId);
     },
@@ -979,6 +1022,28 @@ function processScheduledTaskReminders_(errors, control) {
     }
   }
   return summary;
+}
+
+/** Reconoce el 404 que Classroom usa para cursos inexistentes o no visibles. */
+function isClassroomCourseUnavailableError_(error) {
+  const text = errorToPlainText(error);
+  return /Requested entity was not found/i.test(text) ||
+    /classroom\.courses\.[\w.]+ failed with error:\s*(?:Course not found|Not Found)/i.test(text);
+}
+
+/** Conserva una sola fila legible por courseId para el resumen final. */
+function rememberUnavailableCourse_(courses, courseId, name, spreadsheetUrl) {
+  const cleanCourseId = String(courseId || "").trim();
+  if (!cleanCourseId) return;
+  const alreadyAdded = (courses || []).some(function (course) {
+    return String(course.courseId) === cleanCourseId;
+  });
+  if (alreadyAdded) return;
+  courses.push({
+    courseId: cleanCourseId,
+    name: String(name || "Nombre no disponible"),
+    spreadsheetUrl: String(spreadsheetUrl || "")
+  });
 }
 
 /** Escribe trazas compactas que permiten ubicar la llamada externa que se atoro. */
@@ -1048,7 +1113,7 @@ function sendCourseInvitationRemindersForCourse_(course) {
 function sendPendingActivitiesSummary_(courseId, control) {
   const pendingByEmail = {};
   const emailByUserId = {};
-  const works = listCourseWorkForSetup(courseId);
+  const works = listCourseWorkForSetup(courseId, { logDetails: false });
   let overdueWorks = 0;
   for (let workIndex = 0; workIndex < works.length; workIndex++) {
     const work = works[workIndex];

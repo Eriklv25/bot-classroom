@@ -25,6 +25,7 @@ const COURSE_EXECUTION_CONTROL = {
   STATUS: "B7",
   LAST_RUN: "B8",
   RESULT: "B9",
+  REMOVE_ID: "B10",
   FIELDS_HEADER_ROW: 12
 };
 
@@ -97,6 +98,18 @@ function elegirCarpetaDeAlmacenamiento() {
 
 /** Aplica desde EJECUTAR todos los cambios, incluidas las tareas seleccionadas. */
 function ejecutarCambiosDelCurso(event) {
+  if (event && event.source) ensureCourseRetirementControl_(event.source);
+  if (event && isCourseRegistryRemovalEdit_(event)) {
+    const courseId = String(event.value || "").trim();
+    event.range.clearContent();
+    const result = retirarCursoDelRegistro(courseId);
+    const templateSheet = requireSheet_(event.source, CONFIG_SHEET_NAMES.TEMPLATE);
+    setCourseExecutionStatus_(templateSheet, result.removed ? "CURSO RETIRADO" : "SIN CAMBIOS",
+      result.removed
+        ? "Se retiro del registro el curso " + courseId + ". No se borro su hoja ni Classroom."
+        : "El curso " + courseId + " no estaba registrado.");
+    return result;
+  }
   if (event && !isCourseExecutionEdit_(event)) return null;
   const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
   ensureReminderTriggerField_(spreadsheet);
@@ -158,6 +171,21 @@ function isCourseExecutionEdit_(event) {
   return event && event.range && event.value === "TRUE" &&
     event.range.getSheet().getName() === CONFIG_SHEET_NAMES.TEMPLATE &&
     event.range.getA1Notation() === COURSE_EXECUTION_CONTROL.CHECKBOX;
+}
+
+function isCourseRegistryRemovalEdit_(event) {
+  return event && event.range && String(event.value || "").trim() !== "" &&
+    event.range.getSheet().getName() === CONFIG_SHEET_NAMES.TEMPLATE &&
+    event.range.getA1Notation() === COURSE_EXECUTION_CONTROL.REMOVE_ID;
+}
+
+/** Agrega el control tambien a las hojas creadas antes de esta funcionalidad. */
+function ensureCourseRetirementControl_(spreadsheet) {
+  const sheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  sheet.getRange("A10").setValue("RETIRAR ID ANTIGUO");
+  sheet.getRange(COURSE_EXECUTION_CONTROL.REMOVE_ID)
+    .setBackground("#fce8e6")
+    .setNote("Pega aqui un courseId antiguo y presiona Enter. Se retirara de los recordatorios sin borrar la hoja ni el curso.");
 }
 
 function isTaskCreationEdit_(event) {
@@ -308,6 +336,29 @@ function getCourseSpreadsheetRegistry_() {
   try { return JSON.parse(value) || {}; } catch (error) { throw new Error("Registro de hojas invalido."); }
 }
 
+/**
+ * Retira un courseId del recorrido global sin borrar el curso ni su hoja.
+ * Puede llamarse desde el editor: retirarCursoDelRegistro("123456789").
+ */
+function retirarCursoDelRegistro(courseId) {
+  const cleanCourseId = String(courseId || "").trim();
+  if (!cleanCourseId) throw new Error("Indica el courseId que deseas retirar.");
+
+  const registry = getCourseSpreadsheetRegistry_();
+  if (!Object.prototype.hasOwnProperty.call(registry, cleanCourseId)) {
+    return { courseId: cleanCourseId, removed: false, reason: "not_registered" };
+  }
+
+  const spreadsheetId = registry[cleanCourseId];
+  delete registry[cleanCourseId];
+  PropertiesService.getScriptProperties().setProperty(
+    PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS, JSON.stringify(registry));
+  resetCourseReminderSchedule_(cleanCourseId);
+  console.log("Curso retirado del registro: " + cleanCourseId +
+    ". La hoja y el curso de Classroom no fueron eliminados.");
+  return { courseId: cleanCourseId, spreadsheetId: spreadsheetId, removed: true };
+}
+
 /** Devuelve y registra en consola los enlaces de todas las hojas de curso conocidas. */
 function listarHojasDeCursos() {
   const registry = getCourseSpreadsheetRegistry_();
@@ -434,7 +485,8 @@ function writeTemplateSheet_(sheet) {
     ["2. GUARDA", "Google Sheets guarda automaticamente."],
     ["3. APLICA", "Opcional: Bot Classroom > Elegir carpeta. Despues marca EJECUTAR."],
     ["EJECUTAR", false], ["Aviso", "No cambies pestañas, encabezados ni nombres de campo."],
-    ["Estado", "LISTO"], ["Ultima ejecucion", ""], ["Resultado", "Sin cambios enviados."], ["", ""],
+    ["Estado", "LISTO"], ["Ultima ejecucion", ""], ["Resultado", "Sin cambios enviados."],
+    ["RETIRAR ID ANTIGUO", ""],
     ["Campo", "Valor"],
     ["existingCourseId", template.existingCourseId], ["courseName", template.course.name],
     ["courseSection", template.course.section], ["descriptionHeading", template.course.descriptionHeading],
@@ -453,6 +505,9 @@ function writeTemplateSheet_(sheet) {
   replaceSheetValues_(sheet, rows);
   sheet.getRange("A1:B1").merge().setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).insertCheckboxes().setBackground("#34a853");
+  sheet.getRange(COURSE_EXECUTION_CONTROL.REMOVE_ID)
+    .setBackground("#fce8e6")
+    .setNote("Pega aqui un courseId antiguo y presiona Enter. Se retirara de los recordatorios sin borrar la hoja ni el curso.");
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
   configureReminderTriggerFieldRange_(sheet.getRange("B27"));
