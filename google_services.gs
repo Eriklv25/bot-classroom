@@ -835,6 +835,12 @@ function procesarRecordatoriosProgramados() {
   const unavailableCourseIds = {};
   let nextIntervalMinutes = DEFAULT_REMINDER_TRIGGER_MINUTES;
   try {
+    const registryCleanup = limpiarRegistroDeCursosInaccesibles_();
+    if (registryCleanup.removed.length) {
+      logReminderProgress_(control, "REGISTRO_LIMPIADO", {
+        removed: registryCleanup.removed
+      });
+    }
     const registry = getCourseSpreadsheetRegistry_();
     logReminderProgress_(control, "REGISTRO_LEIDO", { courses: Object.keys(registry).length });
     nextIntervalMinutes = getShortestConfiguredReminderTriggerMinutes_();
