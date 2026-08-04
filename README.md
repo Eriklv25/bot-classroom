@@ -112,7 +112,10 @@ crea un duplicado. La columna **enabled** no crea actividades; habilita únicame
 revisión automática de esa tarea. En **Tareas**, `textoActividad` permite
 controlar el texto visible en Classroom para cada actividad sin perder la
 descripcion anterior, y `linksAdjuntos` acepta una o varias ligas separadas por
-coma o salto de linea para agregarlas como materiales de la tarea.
+coma o salto de linea para agregarlas como materiales cuando la tarea se crea
+desde la hoja. En tareas que ya existen, Classroom no permite actualizar
+materiales con `courseWork.patch`; el bot omite esos links y deja un registro
+para que los agregues manualmente si hace falta.
 
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin

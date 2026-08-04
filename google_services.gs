@@ -513,8 +513,11 @@ function updateCourseWorkFromConfig(courseId, courseWorkId, config) {
     updateFields.push("topicId");
   }
   if (config.materials && config.materials.length) {
-    resource.materials = config.materials;
-    updateFields.push("materials");
+    console.info(
+      "Se omitieron los linksAdjuntos de la tarea existente '" + config.title +
+      "' porque Classroom no permite actualizar materiales con courseWork.patch. " +
+      "Para adjuntarlos automaticamente, marca crearAhora en una tarea nueva o agregalos manualmente en Classroom."
+    );
   }
   if (config.dueDate) {
     const utcDue = getFutureCourseWorkDue_(config.dueDate, config.dueTime, config.title);
