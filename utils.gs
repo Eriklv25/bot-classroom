@@ -90,6 +90,9 @@ function getActiveTaskConfigs(options) {
 
   for (let courseIndex = 0; courseIndex < enabledCourses.length; courseIndex++) {
     const courseConfig = enabledCourses[courseIndex];
+    if (options.skipCourseIds && options.skipCourseIds[String(courseConfig.courseId)]) {
+      continue;
+    }
     if (options.shouldContinue && !options.shouldContinue(courseConfig.courseId)) {
       taskConfigs.incomplete = true;
       break;

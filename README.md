@@ -80,6 +80,14 @@ sus nombres y enlaces. El proyecto instala solo un trigger de edición por hoja 
 un trigger global de recordatorios; no instala triggers de apertura, para no
 agotar la cuota de Apps Script al administrar varios cursos.
 
+Para retirar un ID antiguo, pega el `courseId` en la celda roja **B10**, junto a
+**RETIRAR ID ANTIGUO**, y presiona Enter. El resultado aparecerá arriba en la
+misma hoja. También puedes ejecutar desde Apps Script
+`retirarCursoDelRegistro("ID_DEL_CURSO")`. Esta acción solamente quita el curso
+del recorrido de recordatorios y limpia su historial de programación: no borra
+el curso de Classroom ni su hoja de cálculo. Usa primero
+`listarHojasDeCursos()` si necesitas consultar los IDs registrados.
+
 En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
 ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
 estado, fecha y hora de entrega, además de la frecuencia y hora de sus
@@ -157,6 +165,12 @@ curso o actividad cuya llamada a Classroom se demoró. `CURSO_ERROR`,
 deja de iniciar llamadas nuevas al llegar a su límite seguro, registra
 `LIMITE_SEGURO` y programa la siguiente corrida en vez de esperar a que Apps
 Script lo termine por tiempo máximo.
+
+Cuando Classroom no encuentra uno o varios cursos, busca la etapa
+`RESUMEN_CURSOS_NO_DISPONIBLES` al final de la ejecución. Incluye una sola fila
+por curso con `courseId`, el nombre conservado en su hoja y `spreadsheetUrl`.
+Así puedes verificar la hoja correspondiente antes de pegar el ID en
+**RETIRAR ID ANTIGUO**.
 
 Google Sheets guarda cada edición automáticamente. No cambies nombres de
 pestañas, encabezados ni los nombres de campo. Usa
