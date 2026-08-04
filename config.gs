@@ -14,8 +14,6 @@ const CONFIG = {
   SAFETY_MARGIN_MS: 45 * 1000,
   MAX_EVIDENCES_PER_RUN: 1,
 
-  ENABLE_REMINDERS: true,
-  ENABLE_OVERDUE_NOTICES: true,
   ENABLE_ERROR_EMAILS: true,
   ENABLE_BATCH_SUMMARY_EMAIL: false,
 
@@ -30,7 +28,6 @@ const CONFIG = {
   GRADE_FIELD_TO_WRITE: "assignedGrade",
   USE_ASSIGNED_GRADE_AS_MARKER: true,
 
-  REMINDER_WINDOW_HOURS: 24,
   OPENAI_MODEL: "gpt-4.1-mini",
   OPENAI_TIMEOUT_MS: 60000,
   OPENAI_MAX_RETRIES: 2,
@@ -66,8 +63,7 @@ const REVIEW_MODES = {
 const COURSE_CONFIGS = [
   {
     enabled: true,
-    courseId: "841460792596",
-    sendStudentNotifications: false
+    courseId: "841460792596"
   }
 ];
 

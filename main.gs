@@ -11,7 +11,7 @@ function processPendingSubmissionsBatch() {
   const lock = LockService.getScriptLock();
   const summary = createEmptyBatchSummary(startedAt);
 
-  console.log("Iniciando revision de tareas");
+  console.info("Iniciando revision de tareas");
 
   try {
     /*
@@ -20,7 +20,7 @@ function processPendingSubmissionsBatch() {
      * el script manualmente mientras el trigger sigue trabajando.
      */
     if (!lock.tryLock(10000)) {
-      console.log("Otra ejecucion sigue activa. Se cancela esta corrida.");
+      console.info("Otra ejecucion sigue activa. Se cancela esta corrida.");
       summary.skippedBecauseLocked = true;
       return summary;
     }
@@ -29,7 +29,7 @@ function processPendingSubmissionsBatch() {
   } catch (error) {
     summary.errors++;
     summary.criticalError = errorToPlainText(error);
-    console.log("Error critico en la ejecucion: " + summary.criticalError);
+    console.info("Error critico en la ejecucion: " + summary.criticalError);
     sendCriticalErrorEmail("Error critico en el bot de Classroom", summary.criticalError);
     appendExecutionLogToSheet(summary);
     throw error;
@@ -37,7 +37,7 @@ function processPendingSubmissionsBatch() {
     try {
       lock.releaseLock();
     } catch (releaseError) {
-      console.log("No fue necesario liberar lock o ya estaba liberado: " + releaseError);
+      console.info("No fue necesario liberar lock o ya estaba liberado: " + releaseError);
     }
   }
 }
@@ -55,18 +55,18 @@ function processPendingSubmissionsBatchWithLockHeld_(startedAt, timer, summary) 
   validateGlobalConfiguration();
 
   const activeTasks = getActiveTaskConfigs();
-  console.log("Tareas activas: " + activeTasks.length);
+  console.info("Tareas activas: " + activeTasks.length);
 
   for (let index = 0; index < activeTasks.length; index++) {
     const taskConfig = activeTasks[index];
 
     if (!hasSafeTimeRemaining(timer)) {
-      console.log("Deteniendo lote por limite seguro de tiempo antes de iniciar otra tarea");
+      console.info("Deteniendo lote por limite seguro de tiempo antes de iniciar otra tarea");
       break;
     }
 
     if (summary.processed >= CONFIG.MAX_EVIDENCES_PER_RUN) {
-      console.log("Deteniendo lote por limite de evidencias configurado");
+      console.info("Deteniendo lote por limite de evidencias configurado");
       break;
     }
 
@@ -75,7 +75,7 @@ function processPendingSubmissionsBatchWithLockHeld_(startedAt, timer, summary) 
 
   summary.finishedAt = new Date();
   summary.elapsedMs = summary.finishedAt.getTime() - startedAt.getTime();
-  console.log("Ejecucion finalizada: " + JSON.stringify(summary));
+  console.info("Ejecucion finalizada: " + JSON.stringify(summary));
 
   appendExecutionLogToSheet(summary);
   sendBatchSummaryToTeacher(summary);
@@ -90,25 +90,22 @@ function processPendingSubmissionsBatchWithLockHeld_(startedAt, timer, summary) 
  * Se usa: dentro del lote principal, una vez por tarea activa.
  */
 function processOneConfiguredTask(taskConfig, timer, summary) {
-  console.log("Revisando tarea configurada: " + getTaskLabel(taskConfig));
+  console.info("Revisando tarea configurada: " + getTaskLabel(taskConfig));
 
   try {
     const courseWork = getCourseWork(taskConfig.courseId, taskConfig.courseWorkId);
-    const unsubmittedSubmissions = getUnsubmittedSubmissionsForTask(taskConfig, courseWork);
     const pendingSubmissions = getPendingSubmissionsForTask(taskConfig, courseWork);
 
-    console.log("Entregas sin enviar encontradas para notificacion: " + unsubmittedSubmissions.length);
-    console.log("Entregas pendientes encontradas: " + pendingSubmissions.length);
-    sendPendingSubmissionNotifications(taskConfig, courseWork, unsubmittedSubmissions);
+    console.info("Entregas pendientes encontradas: " + pendingSubmissions.length);
 
     for (let index = 0; index < pendingSubmissions.length; index++) {
       if (!hasSafeTimeRemaining(timer)) {
-        console.log("Deteniendo tarea por limite seguro de tiempo");
+        console.info("Deteniendo tarea por limite seguro de tiempo");
         return;
       }
 
       if (summary.processed >= CONFIG.MAX_EVIDENCES_PER_RUN) {
-        console.log("Deteniendo tarea por limite de evidencias del lote");
+        console.info("Deteniendo tarea por limite de evidencias del lote");
         return;
       }
 
@@ -117,7 +114,7 @@ function processOneConfiguredTask(taskConfig, timer, summary) {
   } catch (error) {
     summary.errors++;
     const message = "Fallo al procesar tarea " + getTaskLabel(taskConfig) + ": " + errorToPlainText(error);
-    console.log(message);
+    console.info(message);
     sendCriticalErrorEmail("Error al procesar tarea de Classroom", message);
   }
 }
@@ -130,7 +127,7 @@ function processOneConfiguredTask(taskConfig, timer, summary) {
  * Se usa: para cada evidencia pendiente.
  */
 function processOneSubmission(taskConfig, courseWork, submission, summary) {
-  console.log("Entrega encontrada: " + submission.id + " / usuario " + submission.userId);
+  console.info("Entrega encontrada: " + submission.id + " / usuario " + submission.userId);
 
   try {
     const evidenceFile = getFirstPdfEvidenceFromSubmission(submission);
@@ -138,19 +135,19 @@ function processOneSubmission(taskConfig, courseWork, submission, summary) {
       throw new Error("La entrega no contiene un archivo PDF accesible.");
     }
 
-    console.log("Archivo descargado: " + evidenceFile.name);
+    console.info("Archivo descargado: " + evidenceFile.name);
 
     const evaluation = evaluateSubmissionByConfiguredMode(evidenceFile, taskConfig);
 
-    console.log("Resultado de revision: " + JSON.stringify(evaluation));
+    console.info("Resultado de revision: " + JSON.stringify(evaluation));
 
     const gradingDecision = decideGradeFromEvaluation(evaluation, taskConfig);
 
     if (CONFIG.DRY_RUN) {
-      console.log("[DRY_RUN] Calificacion que se asignaria: " + gradingDecision.grade);
+      console.info("[DRY_RUN] Calificacion que se asignaria: " + gradingDecision.grade);
     } else {
       assignGradeToSubmission(taskConfig, submission.id, gradingDecision.grade);
-      console.log("Calificacion asignada: " + gradingDecision.grade);
+      console.info("Calificacion asignada: " + gradingDecision.grade);
     }
 
     summary.processed++;
@@ -164,7 +161,7 @@ function processOneSubmission(taskConfig, courseWork, submission, summary) {
   } catch (error) {
     summary.errors++;
     const message = "Error en entrega " + submission.id + ": " + errorToPlainText(error);
-    console.log(message);
+    console.info(message);
     appendErrorLogToSheet(taskConfig, submission, message);
     sendCriticalErrorEmail("Error al revisar evidencia", message);
   }
