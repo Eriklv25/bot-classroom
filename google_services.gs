@@ -741,9 +741,7 @@ function sendTeacherInvitationRemindersFromTemplate(skipConfigurationLoad) {
         reminderConfig.bodyIntro || "Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
         "",
         "Curso: " + (course.name || courseId),
-        course.alternateLink ? "Liga: " + course.alternateLink : "",
-        "",
-        "Por favor entra a Classroom y acepta la invitacion."
+        course.alternateLink ? "Liga: " + course.alternateLink : ""
       ].join("\n")
     });
 
@@ -1060,9 +1058,7 @@ function sendCourseInvitationRemindersForCourse_(course) {
         reminderConfig.bodyIntro || "Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
         "",
         "Curso: " + course.name,
-        course.alternateLink ? "Liga: " + course.alternateLink : "",
-        "",
-        "Por favor entra a Classroom y acepta la invitacion."
+        course.alternateLink ? "Liga: " + course.alternateLink : ""
       ].join("\n")
     });
     summaries.push({ email: email, courseId: course.courseId });
@@ -1116,9 +1112,7 @@ function sendPendingActivitiesSummary_(courseId, control) {
         formatReminderGreeting_(findParticipantNameByEmail_(email)),
         "",
         (COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {}).bodyIntro || "Estas actividades vencidas siguen pendientes:",
-        "- " + pendingByEmail[email].join("\n- "),
-        "",
-        "Revisa el curso en Google Classroom."
+        "- " + pendingByEmail[email].join("\n- ")
       ].join("\n")
     });
     sent.push({ email: email, activities: pendingByEmail[email].length });

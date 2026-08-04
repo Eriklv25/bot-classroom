@@ -30,7 +30,7 @@ const COURSE_EXECUTION_CONTROL = {
 };
 
 const TASK_COLUMNS = [
-  "crearAhora", "enabled", "topic", "nombreActividad", "descripcion",
+  "crearAhora", "enabled", "publicarAhora", "topic", "nombreActividad", "descripcion",
   "reviewMode", "exampleId", "prompt", "validGrade", "invalidGrade",
   "maxPoints", "state", "dueDate", "dueTime", "textoActividad", "linksAdjuntos"
 ];
@@ -637,8 +637,8 @@ function writeTasksSheet_(sheet) {
   const rows = COURSE_SETUP_TEMPLATE.courseWork.map(function (work) {
     const rule = rulesByTitle[normalizeTaskTitle(work.title)] || {};
     return {
-      crearAhora: false, enabled: work.enabled !== false, topic: work.topicName || "",
-      nombreActividad: work.title, descripcion: work.description || "",
+      crearAhora: false, enabled: work.enabled !== false, publicarAhora: work.state === "PUBLISHED",
+      topic: work.topicName || "", nombreActividad: work.title, descripcion: work.description || "",
       reviewMode: rule.reviewMode || REVIEW_MODES.DOCUMENT_ONLY,
       exampleId: rule.exampleFileId || "", prompt: rule.prompt || "",
       validGrade: rule.validGrade || CONFIG.VALID_GRADE, invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
@@ -649,17 +649,18 @@ function writeTasksSheet_(sheet) {
   });
   writeTableWithHeaders_(sheet, TASK_COLUMNS, rows);
   const editableRows = Math.max(rows.length + 25, 50);
-  sheet.getRange(2, 1, editableRows, 2).insertCheckboxes();
+  sheet.getRange(2, 1, editableRows, 3).insertCheckboxes();
   sheet.getRange(1, 1).setNote("Selecciona una o varias tareas y despues marca EJECUTAR en Plantilla de curso. Las casillas permanecen seleccionadas como referencia.");
   sheet.getRange(1, 2).setNote("Activa o desactiva la revision automatica de esta tarea. No crea la tarea en Classroom.");
-  sheet.getRange(1, 13).setNote("Fecha limite en formato AAAA-MM-DD (por ejemplo, 2026-08-31).");
-  sheet.getRange(1, 14).setNote("Hora limite en formato HH:MM de 24 horas (por ejemplo, 23:59), usando la zona horaria indicada en Plantilla de curso.");
-  sheet.getRange(1, 15).setNote("Texto que se mostrara en Classroom para esta actividad. Si se deja vacio, se usa descripcion.");
-  sheet.getRange(1, 16).setNote("Pega una o varias ligas de Drive o web para adjuntar a la tarea, separadas por coma o salto de linea.");
-  sheet.getRange(2, 13, editableRows, 1).setNumberFormat("yyyy-mm-dd");
-  sheet.getRange(2, 14, editableRows, 1).setNumberFormat("hh:mm");
+  sheet.getRange(1, 3).setNote("Si esta casilla no se activa, la actividad queda como borrador. Si se activa, se publica directamente en Classroom.");
+  sheet.getRange(1, 14).setNote("Fecha limite en formato AAAA-MM-DD (por ejemplo, 2026-08-31).");
+  sheet.getRange(1, 15).setNote("Hora limite en formato HH:MM de 24 horas (por ejemplo, 23:59), usando la zona horaria indicada en Plantilla de curso.");
+  sheet.getRange(1, 16).setNote("Texto que se mostrara en Classroom para esta actividad. Si se deja vacio, se usa descripcion.");
+  sheet.getRange(1, 17).setNote("Pega una o varias ligas de Drive o web para adjuntar a la tarea, separadas por coma o salto de linea.");
+  sheet.getRange(2, 14, editableRows, 1).setNumberFormat("yyyy-mm-dd");
+  sheet.getRange(2, 15, editableRows, 1).setNumberFormat("hh:mm");
   const reviewRule = SpreadsheetApp.newDataValidation().requireValueInList([REVIEW_MODES.DOCUMENT_ONLY, REVIEW_MODES.AI], true).build();
-  sheet.getRange(2, 6, editableRows, 1).setDataValidation(reviewRule);
+  sheet.getRange(2, 7, editableRows, 1).setDataValidation(reviewRule);
 }
 
 
@@ -672,6 +673,13 @@ function ensureTaskColumns_(spreadsheet) {
     sheet.getRange(1, sheet.getLastColumn() + 1).setValue(header);
     headers.push(header);
   });
+  const editableRows = Math.max(sheet.getLastRow() + 25, 50);
+  const publishColumn = headers.indexOf("publicarAhora") + 1;
+  if (publishColumn > 0) {
+    sheet.getRange(2, publishColumn, editableRows, 1).insertCheckboxes();
+    sheet.getRange(1, publishColumn).setNote(
+      "Si esta casilla no se activa, la actividad queda como borrador. Si se activa, se publica directamente en Classroom.");
+  }
 }
 
 /** Retira de hojas existentes la antigua programacion individual por tarea. */
@@ -717,7 +725,8 @@ function applyCourseTemplate_(spreadsheet) {
   replaceArray_(COURSE_SETUP_TEMPLATE.courseWork, tasks.map(function (task) {
     return { enabled: task.enabled !== false, topicName: task.topic, title: task.nombreActividad,
       description: task.textoActividad || task.descripcion || "", textoActividad: task.textoActividad || "",
-      linksAdjuntos: parseLinkList_(task.linksAdjuntos), maxPoints: task.maxPoints, state: task.state,
+      linksAdjuntos: parseLinkList_(task.linksAdjuntos), maxPoints: task.maxPoints,
+      state: task.publicarAhora === true ? "PUBLISHED" : "DRAFT",
       dueDate: parseDateParts_(task.dueDate), dueTime: parseTimeParts_(task.dueTime) };
   }));
 }

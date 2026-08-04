@@ -101,10 +101,11 @@ campo rojo se guarda como texto para conservar exactamente IDs largos al usar
 En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
 ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
 estado, fecha y hora de entrega. Para añadir actividades, completa sus filas y
-marca
-**crearAhora** en todas las que quieras preparar. La selección no ejecuta nada
+marca **crearAhora** en todas las que quieras preparar. La selección no ejecuta nada
 por sí sola: marca **EJECUTAR** en la plantilla para crearlas juntas. Las
-casillas permanecen seleccionadas como referencia. El bot consulta tanto las
+casillas permanecen seleccionadas como referencia. La columna **publicarAhora**
+controla si la actividad se publica directamente: sin marcar queda como
+borrador y marcada se crea o actualiza como publicada. El bot consulta tanto las
 tareas publicadas como los borradores antes de crear y usa el nombre como
 identificador único de la actividad: si ya existe en Classroom se actualiza y nunca se
 crea un duplicado. La columna **enabled** no crea actividades; habilita únicamente la
