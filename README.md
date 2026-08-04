@@ -88,6 +88,16 @@ del recorrido de recordatorios y limpia su historial de programación: no borra
 el curso de Classroom ni su hoja de cálculo. Usa primero
 `listarHojasDeCursos()` si necesitas consultar los IDs registrados.
 
+**No restaures las hojas que ya están en la papelera.** El registro de IDs se
+guarda en las propiedades del proyecto y es independiente de Drive: vaciar la
+papelera tampoco elimina esos IDs. Ejecuta una vez
+`limpiarRegistroDeCursosEnPapelera()` desde Apps Script; retirará en bloque las
+entradas cuyas hojas estén en la papelera o ya se hayan eliminado
+definitivamente. Las revisiones programadas hacen también esta limpieza antes de
+recorrer los cursos, de modo que esas entradas dejan de consumir recursos. El
+campo rojo se guarda como texto para conservar exactamente IDs largos al usar
+`retirarCursoDelRegistro` de forma individual.
+
 En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
 ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
 estado, fecha y hora de entrega, además de la frecuencia y hora de sus

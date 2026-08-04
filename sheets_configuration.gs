@@ -71,6 +71,7 @@ function onOpen() {
   SpreadsheetApp.getUi().createMenu("Bot Classroom")
     .addItem("Elegir carpeta de almacenamiento", "elegirCarpetaDeAlmacenamiento")
     .addItem("Listar hojas de cursos", "listarHojasDeCursos")
+    .addItem("Limpiar cursos de la papelera", "limpiarRegistroDeCursosEnPapelera")
     .addSeparator()
     .addItem("Revisar recordatorios ahora", "procesarRecordatoriosAhora")
     .addToUi();
@@ -187,6 +188,7 @@ function ensureCourseRetirementControl_(spreadsheet) {
   sheet.getRange("A10").setValue("RETIRAR ID ANTIGUO");
   sheet.getRange(COURSE_EXECUTION_CONTROL.REMOVE_ID)
     .setBackground("#fce8e6")
+    .setNumberFormat("@")
     .setNote("Pega aqui un courseId antiguo y presiona Enter. Se retirara de los recordatorios sin borrar la hoja ni el curso.");
 }
 
@@ -336,6 +338,51 @@ function getCourseSpreadsheetRegistry_() {
   const value = PropertiesService.getScriptProperties().getProperty(PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS);
   if (!value) return {};
   try { return JSON.parse(value) || {}; } catch (error) { throw new Error("Registro de hojas invalido."); }
+}
+
+/**
+ * Quita del registro las hojas enviadas a la papelera o que ya no existen.
+ *
+ * El registro vive en las propiedades del proyecto, no en Drive. Por eso mover
+ * o borrar definitivamente una hoja no elimina por si solo su courseId.
+ */
+function limpiarRegistroDeCursosEnPapelera() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(REMINDER_SAFE_RUNTIME_MS)) {
+    throw new Error("No se pudo limpiar el registro porque hay otra ejecucion en curso.");
+  }
+  try {
+    return limpiarRegistroDeCursosInaccesibles_();
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** Debe ejecutarse con el ScriptLock adquirido. */
+function limpiarRegistroDeCursosInaccesibles_() {
+  const registry = getCourseSpreadsheetRegistry_();
+  const removed = [];
+  Object.keys(registry).forEach(function (courseId) {
+    const spreadsheetId = registry[courseId];
+    let reason = "";
+    try {
+      if (DriveApp.getFileById(spreadsheetId).isTrashed()) reason = "in_trash";
+    } catch (error) {
+      // Una hoja borrada definitivamente ya no puede abrirse para preguntar si
+      // esta en la papelera. En ese caso tambien es una entrada huerfana.
+      reason = "not_accessible";
+    }
+    if (!reason) return;
+    delete registry[courseId];
+    resetCourseReminderSchedule_(courseId);
+    removed.push({ courseId: courseId, spreadsheetId: spreadsheetId, reason: reason });
+  });
+  if (removed.length) {
+    PropertiesService.getScriptProperties().setProperty(
+      PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS, JSON.stringify(registry));
+  }
+  console.log("Limpieza de cursos huerfanos: " + JSON.stringify(removed));
+  return { removed: removed, remainingCourseIds: Object.keys(registry) };
 }
 
 /**
@@ -522,6 +569,7 @@ function writeTemplateSheet_(sheet) {
   sheet.getRange(COURSE_EXECUTION_CONTROL.CHECKBOX).insertCheckboxes().setBackground("#34a853");
   sheet.getRange(COURSE_EXECUTION_CONTROL.REMOVE_ID)
     .setBackground("#fce8e6")
+    .setNumberFormat("@")
     .setNote("Pega aqui un courseId antiguo y presiona Enter. Se retirara de los recordatorios sin borrar la hoja ni el curso.");
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
