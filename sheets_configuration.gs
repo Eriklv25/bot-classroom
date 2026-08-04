@@ -32,7 +32,7 @@ const COURSE_EXECUTION_CONTROL = {
 const TASK_COLUMNS = [
   "crearAhora", "enabled", "topic", "nombreActividad", "descripcion",
   "reviewMode", "exampleId", "prompt", "validGrade", "invalidGrade",
-  "maxPoints", "state", "dueDate", "dueTime"
+  "maxPoints", "state", "dueDate", "dueTime", "textoActividad", "linksAdjuntos"
 ];
 
 const PARTICIPANT_COLUMNS = ["selected", "name", "email", "rol"];
@@ -67,6 +67,7 @@ function onOpen() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   if (spreadsheet && spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TEMPLATE)) {
     ensureReminderTriggerField_(spreadsheet);
+    ensureTaskColumns_(spreadsheet);
     removeLegacyTaskReminderColumns_(spreadsheet);
   }
   SpreadsheetApp.getUi().createMenu("Bot Classroom")
@@ -101,6 +102,7 @@ function elegirCarpetaDeAlmacenamiento() {
 /** Aplica desde EJECUTAR todos los cambios, incluidas las tareas seleccionadas. */
 function ejecutarCambiosDelCurso(event) {
   if (event && event.source) ensureCourseRetirementControl_(event.source);
+  if (event && event.source) ensureTaskColumns_(event.source);
   if (event && event.source) removeLegacyTaskReminderColumns_(event.source);
   if (event && isCourseRegistryRemovalEdit_(event)) {
     const courseId = String(event.value || "").trim();
@@ -118,6 +120,7 @@ function ejecutarCambiosDelCurso(event) {
   if (event && !isCourseExecutionEdit_(event)) return null;
   const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
   ensureReminderTriggerField_(spreadsheet);
+  ensureTaskColumns_(spreadsheet);
   const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
   if (event) event.range.setValue(false);
   const lock = LockService.getScriptLock();
@@ -560,8 +563,10 @@ function writeTemplateSheet_(sheet) {
     ["defaultMaxPoints", template.defaultMaxPoints],
     ["recordatorioInvitacionCadaDias", (template.teacherInvitationReminder || {}).everyDays || 2],
     ["horaRecordatorioInvitacion", (template.teacherInvitationReminder || {}).hour || "09:00"],
+    ["textoRecordatorioInvitacion", (template.teacherInvitationReminder || {}).bodyIntro || "Sigue pendiente tu invitacion al curso de Classroom."],
     ["recordatorioPendientesCadaDias", (template.pendingActivitiesReminder || {}).everyDays || 2],
     ["horaRecordatorioPendientes", (template.pendingActivitiesReminder || {}).hour || "10:00"],
+    ["textoRecordatorioPendientes", (template.pendingActivitiesReminder || {}).bodyIntro || "Estas actividades vencidas siguen pendientes:"],
     ["intervaloTriggerRecordatoriosMinutos", template.reminderTriggerEveryMinutes || DEFAULT_REMINDER_TRIGGER_MINUTES],
     ["zonaHoraria", COURSE_SHEET_TIME_ZONE],
     ["carpetaAlmacenamiento", ""]
@@ -575,9 +580,11 @@ function writeTemplateSheet_(sheet) {
     .setNote("Pega aqui un courseId antiguo y presiona Enter. Se retirara de los recordatorios sin borrar la hoja ni el curso.");
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
-  configureReminderTriggerFieldRange_(sheet.getRange("B27"));
-  sheet.getRange("B28").setNote("Zona horaria usada para todas las horas de esta hoja: Ciudad de Mexico.");
-  sheet.getRange("B29").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
+  configureReminderTriggerFieldRange_(sheet.getRange("B29"));
+  sheet.getRange("B25").setNote("Texto editable del correo. El bot antepone automaticamente: Estimado(a) docente NOMBRE_PROFESOR.");
+  sheet.getRange("B28").setNote("Texto editable del correo. El bot antepone automaticamente: Estimado(a) docente NOMBRE_PROFESOR.");
+  sheet.getRange("B30").setNote("Zona horaria usada para todas las horas de esta hoja: Ciudad de Mexico.");
+  sheet.getRange("B31").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
   sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 620); sheet.getDataRange().setWrap(true);
 }
 
@@ -592,13 +599,25 @@ function ensureReminderTriggerField_(spreadsheet) {
       break;
     }
   }
+  addMissingTemplateField_(sheet, values, "textoRecordatorioInvitacion",
+    "Sigue pendiente tu invitacion al curso de Classroom.");
+  addMissingTemplateField_(sheet, values, "textoRecordatorioPendientes",
+    "Estas actividades vencidas siguen pendientes:");
   if (!fieldRow) {
-    fieldRow = sheet.getLastRow() + 1;
-    sheet.getRange(fieldRow, 1, 1, 2).setValues([
-      ["intervaloTriggerRecordatoriosMinutos", DEFAULT_REMINDER_TRIGGER_MINUTES]
-    ]);
+    fieldRow = addMissingTemplateField_(sheet, values,
+      "intervaloTriggerRecordatoriosMinutos", DEFAULT_REMINDER_TRIGGER_MINUTES);
   }
   configureReminderTriggerFieldRange_(sheet.getRange(fieldRow, 2));
+}
+
+function addMissingTemplateField_(sheet, values, fieldName, defaultValue) {
+  for (let index = COURSE_EXECUTION_CONTROL.FIELDS_HEADER_ROW - 1; index < values.length; index++) {
+    if (String(values[index][0] || "").trim() === fieldName) return index + 1;
+  }
+  const row = sheet.getLastRow() + 1;
+  sheet.getRange(row, 1, 1, 2).setValues([[fieldName, defaultValue]]);
+  values.push([fieldName, defaultValue]);
+  return row;
 }
 
 function configureReminderTriggerFieldRange_(range) {
@@ -624,7 +643,8 @@ function writeTasksSheet_(sheet) {
       exampleId: rule.exampleFileId || "", prompt: rule.prompt || "",
       validGrade: rule.validGrade || CONFIG.VALID_GRADE, invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
       maxPoints: work.maxPoints || COURSE_SETUP_TEMPLATE.defaultMaxPoints, state: work.state || COURSE_SETUP_TEMPLATE.defaultState,
-      dueDate: work.dueDate ? formatDateParts_(work.dueDate) : "", dueTime: work.dueTime ? formatTimeParts_(work.dueTime) : ""
+      dueDate: work.dueDate ? formatDateParts_(work.dueDate) : "", dueTime: work.dueTime ? formatTimeParts_(work.dueTime) : "",
+      textoActividad: work.textoActividad || work.description || "", linksAdjuntos: serializeLinks_(work.linksAdjuntos)
     };
   });
   writeTableWithHeaders_(sheet, TASK_COLUMNS, rows);
@@ -634,10 +654,24 @@ function writeTasksSheet_(sheet) {
   sheet.getRange(1, 2).setNote("Activa o desactiva la revision automatica de esta tarea. No crea la tarea en Classroom.");
   sheet.getRange(1, 13).setNote("Fecha limite en formato AAAA-MM-DD (por ejemplo, 2026-08-31).");
   sheet.getRange(1, 14).setNote("Hora limite en formato HH:MM de 24 horas (por ejemplo, 23:59), usando la zona horaria indicada en Plantilla de curso.");
+  sheet.getRange(1, 15).setNote("Texto que se mostrara en Classroom para esta actividad. Si se deja vacio, se usa descripcion.");
+  sheet.getRange(1, 16).setNote("Pega una o varias ligas de Drive o web para adjuntar a la tarea, separadas por coma o salto de linea.");
   sheet.getRange(2, 13, editableRows, 1).setNumberFormat("yyyy-mm-dd");
   sheet.getRange(2, 14, editableRows, 1).setNumberFormat("hh:mm");
   const reviewRule = SpreadsheetApp.newDataValidation().requireValueInList([REVIEW_MODES.DOCUMENT_ONLY, REVIEW_MODES.AI], true).build();
   sheet.getRange(2, 6, editableRows, 1).setDataValidation(reviewRule);
+}
+
+
+function ensureTaskColumns_(spreadsheet) {
+  const sheet = spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TASKS);
+  if (!sheet || sheet.getLastColumn() === 0) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  TASK_COLUMNS.forEach(function (header) {
+    if (headers.indexOf(header) !== -1) return;
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue(header);
+    headers.push(header);
+  });
 }
 
 /** Retira de hojas existentes la antigua programacion individual por tarea. */
@@ -663,10 +697,14 @@ function applyCourseTemplate_(spreadsheet) {
   COURSE_SETUP_TEMPLATE.defaultState = values.defaultState || "DRAFT";
   COURSE_SETUP_TEMPLATE.defaultMaxPoints = values.defaultMaxPoints || 100;
   COURSE_SETUP_TEMPLATE.teacherInvitationReminder = Object.assign({}, COURSE_SETUP_TEMPLATE.teacherInvitationReminder, {
-    everyDays: nonNegativeInteger_(values.recordatorioInvitacionCadaDias, 2), hour: normalizeHour_(values.horaRecordatorioInvitacion, "09:00")
+    everyDays: nonNegativeInteger_(values.recordatorioInvitacionCadaDias, 2),
+    hour: normalizeHour_(values.horaRecordatorioInvitacion, "09:00"),
+    bodyIntro: String(values.textoRecordatorioInvitacion || "Sigue pendiente tu invitacion al curso de Classroom.")
   });
   COURSE_SETUP_TEMPLATE.pendingActivitiesReminder = Object.assign({}, COURSE_SETUP_TEMPLATE.pendingActivitiesReminder, {
-    everyDays: nonNegativeInteger_(values.recordatorioPendientesCadaDias, 2), hour: normalizeHour_(values.horaRecordatorioPendientes, "10:00")
+    everyDays: nonNegativeInteger_(values.recordatorioPendientesCadaDias, 2),
+    hour: normalizeHour_(values.horaRecordatorioPendientes, "10:00"),
+    bodyIntro: String(values.textoRecordatorioPendientes || "Estas actividades vencidas siguen pendientes:")
   });
   COURSE_SETUP_TEMPLATE.reminderTriggerEveryMinutes = normalizeReminderTriggerMinutes_(
     values.intervaloTriggerRecordatoriosMinutos, DEFAULT_REMINDER_TRIGGER_MINUTES);
@@ -678,7 +716,8 @@ function applyCourseTemplate_(spreadsheet) {
   replaceArray_(COURSE_SETUP_TEMPLATE.topics, uniqueTopics_(tasks));
   replaceArray_(COURSE_SETUP_TEMPLATE.courseWork, tasks.map(function (task) {
     return { enabled: task.enabled !== false, topicName: task.topic, title: task.nombreActividad,
-      description: task.descripcion || "", maxPoints: task.maxPoints, state: task.state,
+      description: task.textoActividad || task.descripcion || "", textoActividad: task.textoActividad || "",
+      linksAdjuntos: parseLinkList_(task.linksAdjuntos), maxPoints: task.maxPoints, state: task.state,
       dueDate: parseDateParts_(task.dueDate), dueTime: parseTimeParts_(task.dueTime) };
   }));
 }
@@ -809,3 +848,10 @@ function replaceSheetValues_(sheet, rows) {
   sheet.getDataRange().breakApart(); sheet.clear();
   if (rows.length && rows[0].length) sheet.getRange(1, 1, rows.length, rows[0].length).setValues(rows);
 }
+
+function parseLinkList_(value) {
+  if (!value) return [];
+  return String(value).split(/[\n,]+/).map(function (item) { return item.trim(); })
+    .filter(function (item, index, values) { return item && values.indexOf(item) === index; });
+}
+function serializeLinks_(value) { return Array.isArray(value) ? value.join("\n") : (value || ""); }

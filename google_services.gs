@@ -442,7 +442,8 @@ function createCourseSetupFromTemplate(template) {
         currentState: existing.state,
         dueDate: workConfig.dueDate || null,
         dueTime: workConfig.dueTime || null,
-        topicId: topicId || null
+        topicId: topicId || null,
+        materials: createCourseWorkMaterialsFromLinks_(workConfig.linksAdjuntos)
       });
       summary.courseWorkUpdated.push({ title: updated.title, courseWorkId: updated.id });
       return;
@@ -470,7 +471,8 @@ function createCourseSetupFromTemplate(template) {
       state: workConfig.state || template.defaultState || "DRAFT",
       dueDate: workConfig.dueDate || null,
       dueTime: workConfig.dueTime || null,
-      topicId: topicId || null
+      topicId: topicId || null,
+      materials: createCourseWorkMaterialsFromLinks_(workConfig.linksAdjuntos)
     };
 
     const created = createCourseWorkFromConfig(creationConfig);
@@ -509,6 +511,10 @@ function updateCourseWorkFromConfig(courseId, courseWorkId, config) {
   if (config.topicId) {
     resource.topicId = String(config.topicId);
     updateFields.push("topicId");
+  }
+  if (config.materials && config.materials.length) {
+    resource.materials = config.materials;
+    updateFields.push("materials");
   }
   if (config.dueDate) {
     const utcDue = getFutureCourseWorkDue_(config.dueDate, config.dueTime, config.title);
@@ -730,7 +736,9 @@ function sendTeacherInvitationRemindersFromTemplate(skipConfigurationLoad) {
       to: email,
       subject: reminderConfig.subject || "Recordatorio: acepta la invitacion al curso de Classroom",
       body: [
-        reminderConfig.bodyIntro || "Hola. Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
+        formatReminderGreeting_(findParticipantNameByEmail_(email)),
+        "",
+        reminderConfig.bodyIntro || "Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
         "",
         "Curso: " + (course.name || courseId),
         course.alternateLink ? "Liga: " + course.alternateLink : "",
@@ -1047,7 +1055,9 @@ function sendCourseInvitationRemindersForCourse_(course) {
       to: email,
       subject: reminderConfig.subject || "Recordatorio: acepta la invitacion al curso de Classroom",
       body: [
-        reminderConfig.bodyIntro || "Hola. Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
+        formatReminderGreeting_(findParticipantNameByEmail_(email)),
+        "",
+        reminderConfig.bodyIntro || "Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
         "",
         "Curso: " + course.name,
         course.alternateLink ? "Liga: " + course.alternateLink : "",
@@ -1102,7 +1112,14 @@ function sendPendingActivitiesSummary_(courseId, control) {
     MailApp.sendEmail({
       to: email,
       subject: "Actividades pendientes: " + (course.name || courseId),
-      body: ["Hola.", "", "Estas actividades vencidas siguen pendientes:", "- " + pendingByEmail[email].join("\n- "), "", "Revisa el curso en Google Classroom."].join("\n")
+      body: [
+        formatReminderGreeting_(findParticipantNameByEmail_(email)),
+        "",
+        (COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {}).bodyIntro || "Estas actividades vencidas siguen pendientes:",
+        "- " + pendingByEmail[email].join("\n- "),
+        "",
+        "Revisa el curso en Google Classroom."
+      ].join("\n")
     });
     sent.push({ email: email, activities: pendingByEmail[email].length });
   });
@@ -1285,6 +1302,10 @@ function createCourseWorkFromConfig(creationConfig) {
     resource.topicId = creationConfig.topicId;
   }
 
+  if (creationConfig.materials && creationConfig.materials.length) {
+    resource.materials = creationConfig.materials;
+  }
+
   /*
    * Esta llamada hace que la tarea quede asociada al proyecto de Apps Script.
    * Esa asociacion es importante para algunas operaciones posteriores, como
@@ -1295,6 +1316,30 @@ function createCourseWorkFromConfig(creationConfig) {
   console.info("La tarea se descubrira automaticamente si su titulo coincide con una regla activa.");
 
   return created;
+}
+
+
+function createCourseWorkMaterialsFromLinks_(links) {
+  return (links || []).map(function (url) {
+    return { link: { url: String(url) } };
+  });
+}
+
+function findParticipantNameByEmail_(email) {
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  if (!cleanEmail) return "";
+  const participants = COURSE_SETUP_TEMPLATE.students || [];
+  for (let index = 0; index < participants.length; index++) {
+    const participant = participants[index] || {};
+    if (String(participant.email || "").trim().toLowerCase() === cleanEmail) {
+      return String(participant.name || "").trim();
+    }
+  }
+  return cleanEmail;
+}
+
+function formatReminderGreeting_(name) {
+  return "Estimado(a) docente " + (String(name || "").trim() || "docente");
 }
 
 /** Convierte la fecha/hora civil de CDMX a los campos UTC requeridos por Classroom. */

@@ -108,12 +108,18 @@ casillas permanecen seleccionadas como referencia. El bot consulta tanto las
 tareas publicadas como los borradores antes de crear y usa el nombre como
 identificador único de la actividad: si ya existe en Classroom se actualiza y nunca se
 crea un duplicado. La columna **enabled** no crea actividades; habilita únicamente la
-revisión automática de esa tarea.
+revisión automática de esa tarea. En **Tareas**, `textoActividad` permite
+controlar el texto visible en Classroom para cada actividad sin perder la
+descripcion anterior, y `linksAdjuntos` acepta una o varias ligas separadas por
+coma o salto de linea para agregarlas como materiales de la tarea.
 
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
-aceptar. `recordatorioPendientesCadaDias` y `horaRecordatorioPendientes`
-configuran el correo general con las actividades vencidas que siguen pendientes.
+aceptar. `textoRecordatorioInvitacion` permite editar el texto del correo; el
+bot antepone automaticamente `Estimado(a) docente NOMBRE_PROFESOR`.
+`recordatorioPendientesCadaDias`, `horaRecordatorioPendientes` y
+`textoRecordatorioPendientes` configuran el correo general con las actividades
+vencidas que siguen pendientes.
 Las actividades cuya fecha limite aun no pasa y aquellas que no tienen fecha
 limite no se incluyen en este recordatorio.
 La comparación respeta también la hora límite UTC informada por Classroom y la
