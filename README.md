@@ -100,15 +100,15 @@ campo rojo se guarda como texto para conservar exactamente IDs largos al usar
 
 En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
 ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
-estado, fecha y hora de entrega, además de la frecuencia y hora de sus
-recordatorios. Para añadir actividades, completa sus filas y marca
+estado, fecha y hora de entrega. Para añadir actividades, completa sus filas y
+marca
 **crearAhora** en todas las que quieras preparar. La selección no ejecuta nada
 por sí sola: marca **EJECUTAR** en la plantilla para crearlas juntas. Las
 casillas permanecen seleccionadas como referencia. El bot consulta tanto las
 tareas publicadas como los borradores antes de crear y usa el nombre como
 identificador único de la actividad: si ya existe en Classroom se actualiza y nunca se
-crea un duplicado. La columna **enabled** no crea actividades; habilita la
-revisión automática y los recordatorios de esa tarea.
+crea un duplicado. La columna **enabled** no crea actividades; habilita únicamente la
+revisión automática de esa tarea.
 
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
@@ -133,10 +133,10 @@ cuando termina la actual, por lo que las ejecuciones no se acumulan aunque
 Classroom tarde en responder. El cambio se
 aplica al marcar **EJECUTAR**; como Apps Script utiliza un único trigger para
 todos los cursos, el bot adopta el intervalo más corto de todas las hojas
-registradas. El trigger evalúa estas opciones; cada fila de **Tareas** conserva su propia frecuencia y
-hora, y el bot registra cada envío para no mandar más de un recordatorio por día.
-Si cambias la hora o la frecuencia, esa combinación se considera una programación
-nueva y una revisión realizada con el horario anterior ya no bloquea el envío.
+registradas. El trigger evalúa únicamente estas opciones de **Plantilla de
+curso** y el bot registra cada envío para no repetirlo durante el periodo
+configurado. No se envían recordatorios individuales configurados por fila de
+**Tareas**.
 Al marcar **EJECUTAR**, el curso vuelve a quedar elegible para revisión: así un
 participante o una tarea agregados después de la revisión diaria no tienen que
 esperar hasta el siguiente intervalo de días. Un error al consultar invitaciones
@@ -169,10 +169,12 @@ el registro de ejecución y no impide procesar los demás cursos.
 Para diagnosticar una ejecución lenta, abre **Ejecuciones**, entra en la corrida
 y consulta los registros que empiezan con `[RECORDATORIOS]`. Todos incluyen un
 identificador de corrida, la etapa y los milisegundos transcurridos; las etapas
-`CURSO_INICIO`, `RESUMEN_ACTIVIDAD` y `TAREA_INICIO` permiten identificar el
-curso o actividad cuya llamada a Classroom se demoró. `CURSO_ERROR`,
-`TAREA_ERROR` y `ERROR_FATAL` incluyen el mensaje y la pila del error. El proceso
-deja de iniciar llamadas nuevas al llegar a su límite seguro, registra
+`CURSO_INICIO` y `RESUMEN_ACTIVIDAD` permiten identificar el curso o actividad
+cuya llamada a Classroom se demoró. `CURSO_ERROR` y `ERROR_FATAL` incluyen el
+mensaje y la pila del error. Los registros se escriben con `console.info`, por lo
+que Apps Script muestra **Información** como nivel. La palabra **Depuración** era
+el nivel automático asignado por Apps Script a `console.log`, no parte del
+mensaje. El proceso deja de iniciar llamadas nuevas al llegar a su límite seguro, registra
 `LIMITE_SEGURO` y programa la siguiente corrida en vez de esperar a que Apps
 Script lo termine por tiempo máximo.
 

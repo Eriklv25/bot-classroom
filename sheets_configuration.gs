@@ -32,7 +32,7 @@ const COURSE_EXECUTION_CONTROL = {
 const TASK_COLUMNS = [
   "crearAhora", "enabled", "topic", "nombreActividad", "descripcion",
   "reviewMode", "exampleId", "prompt", "validGrade", "invalidGrade",
-  "maxPoints", "state", "dueDate", "dueTime", "recordatorioCadaDias", "horaRecordatorio"
+  "maxPoints", "state", "dueDate", "dueTime"
 ];
 
 const PARTICIPANT_COLUMNS = ["selected", "name", "email", "rol"];
@@ -67,6 +67,7 @@ function onOpen() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   if (spreadsheet && spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TEMPLATE)) {
     ensureReminderTriggerField_(spreadsheet);
+    removeLegacyTaskReminderColumns_(spreadsheet);
   }
   SpreadsheetApp.getUi().createMenu("Bot Classroom")
     .addItem("Elegir carpeta de almacenamiento", "elegirCarpetaDeAlmacenamiento")
@@ -100,6 +101,7 @@ function elegirCarpetaDeAlmacenamiento() {
 /** Aplica desde EJECUTAR todos los cambios, incluidas las tareas seleccionadas. */
 function ejecutarCambiosDelCurso(event) {
   if (event && event.source) ensureCourseRetirementControl_(event.source);
+  if (event && event.source) removeLegacyTaskReminderColumns_(event.source);
   if (event && isCourseRegistryRemovalEdit_(event)) {
     const courseId = String(event.value || "").trim();
     const result = retirarCursoDelRegistro(courseId);
@@ -157,7 +159,7 @@ function ejecutarCambiosDelCurso(event) {
     // exista una proxima ejecucion verificable.
     const nextReminderMinutes = getShortestConfiguredReminderTriggerMinutes_(spreadsheet);
     scheduleNextReminderRun_(nextReminderMinutes);
-    console.log("Proxima revision de recordatorios programada en aproximadamente " +
+    console.info("Proxima revision de recordatorios programada en aproximadamente " +
       nextReminderMinutes + " minuto(s). Handler=procesarRecordatoriosProgramados");
     setCourseExecutionStatus_(templateSheet, "COMPLETADO",
       (created ? "Curso creado" : "Curso actualizado") + ": " + course.name + " (" + courseId +"). " +
@@ -286,7 +288,7 @@ function getShortestConfiguredReminderTriggerMinutes_(currentSpreadsheet) {
         DEFAULT_REMINDER_TRIGGER_MINUTES
       );
     } catch (error) {
-      console.log("No se pudo leer el intervalo del trigger en la hoja " + spreadsheetId + ": " + errorToPlainText(error));
+      console.info("No se pudo leer el intervalo del trigger en la hoja " + spreadsheetId + ": " + errorToPlainText(error));
       return null;
     }
   }).filter(function (interval) { return interval !== null; });
@@ -381,7 +383,7 @@ function limpiarRegistroDeCursosInaccesibles_() {
     PropertiesService.getScriptProperties().setProperty(
       PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS, JSON.stringify(registry));
   }
-  console.log("Limpieza de cursos huerfanos: " + JSON.stringify(removed));
+  console.info("Limpieza de cursos huerfanos: " + JSON.stringify(removed));
   return { removed: removed, remainingCourseIds: Object.keys(registry) };
 }
 
@@ -413,7 +415,7 @@ function retirarCursoDelRegistro(courseId) {
     PropertiesService.getScriptProperties().setProperty(
       PROPERTY_KEYS.COURSE_CONFIG_SPREADSHEETS, JSON.stringify(registry));
     resetCourseReminderSchedule_(cleanCourseId);
-    console.log("Curso retirado del registro: " + cleanCourseId +
+    console.info("Curso retirado del registro: " + cleanCourseId +
       ". La hoja y el curso de Classroom no fueron eliminados.");
     return { courseId: cleanCourseId, spreadsheetId: spreadsheetId, removed: true };
   } finally {
@@ -432,7 +434,7 @@ function listarHojasDeCursos() {
       return { courseId: courseId, name: "Hoja no accesible", url: "" };
     }
   });
-  console.log("Hojas de cursos: " + JSON.stringify(courses));
+  console.info("Hojas de cursos: " + JSON.stringify(courses));
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) {
     const links = courses.length ? courses.map(function (course) {
@@ -488,9 +490,9 @@ function loadConfigurationFromSpreadsheet(loadAllCourseSpreadsheets) {
       try {
         const spreadsheet = SpreadsheetApp.openById(registry[courseId]);
         readTaskRows_(spreadsheet).forEach(function (task) { rules.push(toTaskRule_(task, courseId)); });
-        courses.push({ enabled: true, courseId: courseId, sendStudentNotifications: true });
+        courses.push({ enabled: true, courseId: courseId });
       } catch (error) {
-        console.log("Se omite la configuracion inaccesible del curso " + courseId + ": " + errorToPlainText(error));
+        console.info("Se omite la configuracion inaccesible del curso " + courseId + ": " + errorToPlainText(error));
       }
     });
     replaceArray_(COURSE_CONFIGS, courses);
@@ -506,7 +508,7 @@ function loadConfigurationFromSpreadsheet(loadAllCourseSpreadsheets) {
 function loadConfigurationFromSpecificSpreadsheet_(spreadsheet) {
   applyCourseTemplate_(spreadsheet);
   const courseId = String(COURSE_SETUP_TEMPLATE.existingCourseId || "");
-  replaceArray_(COURSE_CONFIGS, courseId ? [{ enabled: true, courseId: courseId, sendStudentNotifications: true }] : []);
+  replaceArray_(COURSE_CONFIGS, courseId ? [{ enabled: true, courseId: courseId }] : []);
   replaceArray_(TASK_RULES, readTaskRows_(spreadsheet).map(function (task) { return toTaskRule_(task, courseId); }));
 }
 
@@ -622,21 +624,33 @@ function writeTasksSheet_(sheet) {
       exampleId: rule.exampleFileId || "", prompt: rule.prompt || "",
       validGrade: rule.validGrade || CONFIG.VALID_GRADE, invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
       maxPoints: work.maxPoints || COURSE_SETUP_TEMPLATE.defaultMaxPoints, state: work.state || COURSE_SETUP_TEMPLATE.defaultState,
-      dueDate: work.dueDate ? formatDateParts_(work.dueDate) : "", dueTime: work.dueTime ? formatTimeParts_(work.dueTime) : "",
-      recordatorioCadaDias: work.reminderEveryDays || 1, horaRecordatorio: work.reminderHour || "09:00"
+      dueDate: work.dueDate ? formatDateParts_(work.dueDate) : "", dueTime: work.dueTime ? formatTimeParts_(work.dueTime) : ""
     };
   });
   writeTableWithHeaders_(sheet, TASK_COLUMNS, rows);
   const editableRows = Math.max(rows.length + 25, 50);
   sheet.getRange(2, 1, editableRows, 2).insertCheckboxes();
   sheet.getRange(1, 1).setNote("Selecciona una o varias tareas y despues marca EJECUTAR en Plantilla de curso. Las casillas permanecen seleccionadas como referencia.");
-  sheet.getRange(1, 2).setNote("Activa o desactiva la revision automatica y los recordatorios de esta tarea. No crea la tarea en Classroom.");
+  sheet.getRange(1, 2).setNote("Activa o desactiva la revision automatica de esta tarea. No crea la tarea en Classroom.");
   sheet.getRange(1, 13).setNote("Fecha limite en formato AAAA-MM-DD (por ejemplo, 2026-08-31).");
   sheet.getRange(1, 14).setNote("Hora limite en formato HH:MM de 24 horas (por ejemplo, 23:59), usando la zona horaria indicada en Plantilla de curso.");
   sheet.getRange(2, 13, editableRows, 1).setNumberFormat("yyyy-mm-dd");
   sheet.getRange(2, 14, editableRows, 1).setNumberFormat("hh:mm");
   const reviewRule = SpreadsheetApp.newDataValidation().requireValueInList([REVIEW_MODES.DOCUMENT_ONLY, REVIEW_MODES.AI], true).build();
   sheet.getRange(2, 6, editableRows, 1).setDataValidation(reviewRule);
+}
+
+/** Retira de hojas existentes la antigua programacion individual por tarea. */
+function removeLegacyTaskReminderColumns_(spreadsheet) {
+  const sheet = spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TASKS);
+  if (!sheet || sheet.getLastColumn() === 0) return;
+  const legacyHeaders = ["recordatorioCadaDia", "recordatorioCadaDias", "horaRecordatorio"];
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  for (let index = headers.length - 1; index >= 0; index--) {
+    if (legacyHeaders.indexOf(String(headers[index] || "").trim()) !== -1) {
+      sheet.deleteColumn(index + 1);
+    }
+  }
 }
 
 function applyCourseTemplate_(spreadsheet) {
@@ -665,8 +679,7 @@ function applyCourseTemplate_(spreadsheet) {
   replaceArray_(COURSE_SETUP_TEMPLATE.courseWork, tasks.map(function (task) {
     return { enabled: task.enabled !== false, topicName: task.topic, title: task.nombreActividad,
       description: task.descripcion || "", maxPoints: task.maxPoints, state: task.state,
-      dueDate: parseDateParts_(task.dueDate), dueTime: parseTimeParts_(task.dueTime),
-      reminderEveryDays: positiveInteger_(task.recordatorioCadaDias, 1), reminderHour: normalizeHour_(task.horaRecordatorio, "09:00") };
+      dueDate: parseDateParts_(task.dueDate), dueTime: parseTimeParts_(task.dueTime) };
   }));
 }
 
@@ -687,8 +700,7 @@ function toTaskRule_(task, courseId) {
   return { enabled: task.enabled !== false, courseId: courseId || "", title: task.nombreActividad,
     reviewMode: task.reviewMode || REVIEW_MODES.DOCUMENT_ONLY, exampleFileId: task.exampleId || "",
     prompt: task.prompt || "", validGrade: Number(task.validGrade || CONFIG.VALID_GRADE),
-    invalidGrade: Number(task.invalidGrade || CONFIG.INVALID_GRADE),
-    reminderEveryDays: positiveInteger_(task.recordatorioCadaDias, 1), reminderHour: normalizeHour_(task.horaRecordatorio, "09:00") };
+    invalidGrade: Number(task.invalidGrade || CONFIG.INVALID_GRADE) };
 }
 
 function positiveInteger_(value, fallback) {
@@ -788,7 +800,7 @@ function getConfigurationSpreadsheet_() {
   if (!id) throw new Error("Primero ejecuta crearHojaDeCurso.");
   return SpreadsheetApp.openById(id);
 }
-function logConfigurationSpreadsheetLink_(spreadsheet, message) { console.log(message + ": " + spreadsheet.getUrl()); }
+function logConfigurationSpreadsheetLink_(spreadsheet, message) { console.info(message + ": " + spreadsheet.getUrl()); }
 function getOrCreateSheet_(spreadsheet, name) { return spreadsheet.getSheetByName(name) || spreadsheet.insertSheet(name); }
 function requireSheet_(spreadsheet, name) {
   const sheet = spreadsheet.getSheetByName(name); if (!sheet) throw new Error("Falta la pestaña: " + name); return sheet;

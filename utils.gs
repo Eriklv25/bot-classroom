@@ -137,10 +137,7 @@ function getActiveTaskConfigs(options) {
         reviewMode: rule.reviewMode || REVIEW_MODES.AI,
         prompt: rule.prompt || "",
         validGrade: rule.validGrade || CONFIG.VALID_GRADE,
-        invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
-        sendStudentNotifications: courseConfig.sendStudentNotifications === true,
-        reminderEveryDays: rule.reminderEveryDays || 1,
-        reminderHour: rule.reminderHour || "09:00"
+        invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE
       });
     });
   }

@@ -42,7 +42,7 @@ function listClassroomCoursesForSetup() {
     pageToken = response.nextPageToken || null;
   } while (pageToken);
 
-  console.log("Cursos encontrados para configuracion: " + JSON.stringify(courses));
+  console.info("Cursos encontrados para configuracion: " + JSON.stringify(courses));
   return courses;
 }
 
@@ -92,7 +92,7 @@ function listCourseWorkForSetup(courseId, options) {
   // los procesos periodicos puede ocupar gran parte del registro y ocultar el
   // error que realmente detuvo la corrida.
   if (options.logDetails !== false) {
-    console.log("Tareas encontradas para curso " + courseId + ": " + JSON.stringify(courseWorks));
+    console.info("Tareas encontradas para curso " + courseId + ": " + JSON.stringify(courseWorks));
   }
   return courseWorks;
 }
@@ -127,7 +127,7 @@ function listClassroomTopicsForSetup(courseId) {
     pageToken = response.nextPageToken || null;
   } while (pageToken);
 
-  console.log("Temas encontrados para curso " + courseId + ": " + JSON.stringify(topics));
+  console.info("Temas encontrados para curso " + courseId + ": " + JSON.stringify(topics));
   return topics;
 }
 
@@ -165,7 +165,7 @@ function createClassroomTopic(courseId, topicName) {
     courseId
   );
 
-  console.log("Tema creado: " + topic.name + " / topicId=" + topic.topicId);
+  console.info("Tema creado: " + topic.name + " / topicId=" + topic.topicId);
   return topic;
 }
 
@@ -253,7 +253,7 @@ function createClassroomCourseFromConfig(courseConfig) {
   };
 
   const created = Classroom.Courses.create(resource);
-  console.log("Curso creado: " + created.name + " / courseId=" + created.id);
+  console.info("Curso creado: " + created.name + " / courseId=" + created.id);
   return created;
 }
 
@@ -273,7 +273,7 @@ function updateClassroomCourseFromConfig(courseId, courseConfig) {
   const updated = Classroom.Courses.patch(resource, courseId, {
     updateMask: "name,section,descriptionHeading,description,room,courseState"
   });
-  console.log("Curso actualizado: " + updated.name + " / courseId=" + courseId);
+  console.info("Curso actualizado: " + updated.name + " / courseId=" + courseId);
   return updated;
 }
 
@@ -312,8 +312,8 @@ function createNewCourseFromTemplate() {
     configurationSpreadsheetUrl: configurationSpreadsheetUrl
   };
 
-  console.log("Resumen de curso nuevo desde plantilla: " + JSON.stringify(summary));
-  console.log("Copia este courseId en COURSE_SETUP_TEMPLATE.existingCourseId si quieres hacer ajustes sin crear otro curso: " + course.id);
+  console.info("Resumen de curso nuevo desde plantilla: " + JSON.stringify(summary));
+  console.info("Copia este courseId en COURSE_SETUP_TEMPLATE.existingCourseId si quieres hacer ajustes sin crear otro curso: " + course.id);
   return summary;
 }
 
@@ -354,7 +354,7 @@ function inviteStudentsFromTemplate(courseId, students) {
     }
   });
 
-  console.log("Resumen de invitaciones de alumnos: " + JSON.stringify(summary));
+  console.info("Resumen de invitaciones de alumnos: " + JSON.stringify(summary));
   return summary;
 }
 
@@ -487,7 +487,7 @@ function createCourseSetupFromTemplate(template) {
     });
   });
 
-  console.log("Resumen de inicializacion de curso: " + JSON.stringify(summary));
+  console.info("Resumen de inicializacion de curso: " + JSON.stringify(summary));
   return summary;
 }
 
@@ -581,7 +581,7 @@ function inviteTeachersFromTemplate(courseId, teacherEmails) {
     }
   });
 
-  console.log("Resumen de invitaciones de profesores: " + JSON.stringify(summary));
+  console.info("Resumen de invitaciones de profesores: " + JSON.stringify(summary));
   return summary;
 }
 
@@ -688,7 +688,7 @@ function getTeacherInvitationStatus(courseId, teacherEmails) {
     }
   });
 
-  console.log("Estado de invitaciones de profesores: " + JSON.stringify(status));
+  console.info("Estado de invitaciones de profesores: " + JSON.stringify(status));
   return status;
 }
 
@@ -742,7 +742,7 @@ function sendTeacherInvitationRemindersFromTemplate(skipConfigurationLoad) {
     summary.sent.push(email);
   });
 
-  console.log("Resumen de recordatorios de profesores: " + JSON.stringify(summary));
+  console.info("Resumen de recordatorios de profesores: " + JSON.stringify(summary));
   return summary;
 }
 
@@ -816,13 +816,13 @@ function procesarRecordatoriosProgramados() {
     logReminderProgress_(control, "OMITIDA_LOCK", {
       message: "Otra ejecucion posee el ScriptLock; esta invocacion termina sin esperar."
     });
-    return { runId: runId, skippedBecauseLocked: true, invitations: [], pendingActivities: null };
+    return { runId: runId, skippedBecauseLocked: true, invitations: [], pendingActivities: {} };
   }
 
   const summary = {
     runId: runId,
     invitations: [],
-    pendingActivities: null,
+    pendingActivities: {},
     errors: [],
     unavailableCourses: [],
     incomplete: false
@@ -923,7 +923,7 @@ function procesarRecordatoriosProgramados() {
         });
         if (pendingConfig.enabled !== false && pendingSchedule.due) {
           const pendingResult = sendPendingActivitiesSummary_(courseId, control);
-          summary["pendingActivities:" + courseId] = pendingResult;
+          summary.pendingActivities[courseId] = pendingResult;
           logReminderProgress_(control, "PENDIENTES_RESULTADO", {
             courseId: courseId,
             worksChecked: pendingResult.worksChecked,
@@ -950,13 +950,6 @@ function procesarRecordatoriosProgramados() {
       }
     }
 
-    // Los recordatorios no deben arrancar el lote de calificacion: ese lote
-    // puede usar OpenAI y acercarse al limite de ejecucion. Aqui solo se listan
-    // entregas sin enviar y se mandan las notificaciones que correspondan.
-    if (!summary.incomplete && hasReminderTimeRemaining_(control, "recordatorios_por_tarea")) {
-      summary.pendingActivities = processScheduledTaskReminders_(summary.errors, control, unavailableCourseIds);
-      summary.incomplete = summary.pendingActivities.incomplete;
-    }
     if (summary.unavailableCourses.length) {
       logReminderProgress_(control, "RESUMEN_CURSOS_NO_DISPONIBLES", {
         total: summary.unavailableCourses.length,
@@ -980,54 +973,6 @@ function procesarRecordatoriosProgramados() {
       lock.releaseLock();
     }
   }
-}
-
-/** Recorre las tareas configuradas sin evaluar ni calificar entregas. */
-function processScheduledTaskReminders_(errors, control, unavailableCourseIds) {
-  loadConfigurationFromSpreadsheet(true);
-  const activeTasks = getActiveTaskConfigs({
-    logCourseWorkDetails: false,
-    skipCourseIds: unavailableCourseIds || {},
-    shouldContinue: function (courseId) {
-      return hasReminderTimeRemaining_(control, "descubrir_tareas:" + courseId);
-    },
-    onCourseError: function (courseId, error) {
-      const message = "No se pudieron descubrir tareas del curso " + courseId +
-        "; se continuara con los demas cursos: " + errorToPlainText(error);
-      logReminderProgress_(control, "DESCUBRIMIENTO_CURSO_ERROR", {
-        courseId: courseId,
-        message: message
-      });
-      errors.push({ courseId: courseId, message: message });
-    }
-  });
-  const summary = {
-    tasksChecked: 0,
-    notificationsChecked: 0,
-    incomplete: activeTasks.incomplete === true
-  };
-  for (let index = 0; index < activeTasks.length; index++) {
-    const taskConfig = activeTasks[index];
-    if (!hasReminderTimeRemaining_(control, "tarea:" + getTaskLabel(taskConfig))) {
-      summary.incomplete = true;
-      break;
-    }
-    try {
-      logReminderProgress_(control, "TAREA_INICIO", { task: getTaskLabel(taskConfig), index: index + 1, total: activeTasks.length });
-      const courseWork = getCourseWork(taskConfig.courseId, taskConfig.courseWorkId);
-      const unsubmitted = getUnsubmittedSubmissionsForTask(taskConfig, courseWork);
-      sendPendingSubmissionNotifications(taskConfig, courseWork, unsubmitted);
-      summary.tasksChecked++;
-      summary.notificationsChecked += unsubmitted.length;
-      logReminderProgress_(control, "TAREA_FIN", { task: getTaskLabel(taskConfig), unsubmitted: unsubmitted.length });
-    } catch (error) {
-      const message = "No se pudieron procesar recordatorios de " +
-        getTaskLabel(taskConfig) + ": " + errorToPlainText(error);
-      logReminderProgress_(control, "TAREA_ERROR", { message: message, stack: error && error.stack || "" });
-      errors.push({ courseId: taskConfig.courseId, message: message });
-    }
-  }
-  return summary;
 }
 
 /** Reconoce el 404 que Classroom usa para cursos inexistentes o no visibles. */
@@ -1055,7 +1000,7 @@ function rememberUnavailableCourse_(courses, courseId, name, spreadsheetUrl) {
 /** Escribe trazas compactas que permiten ubicar la llamada externa que se atoro. */
 function logReminderProgress_(control, stage, details) {
   control.lastStage = stage;
-  console.log("[RECORDATORIOS][" + control.runId + "][" + stage + "][" +
+  console.info("[RECORDATORIOS][" + control.runId + "][" + stage + "][" +
     (new Date().getTime() - control.startedMs) + "ms] " + JSON.stringify(details || {}));
 }
 
@@ -1239,7 +1184,7 @@ function resetCourseReminderSchedule_(courseId) {
     return key.indexOf(prefix) === 0 && key.indexOf(courseMarker) !== -1;
   });
   keys.forEach(function (key) { properties.deleteProperty(key); });
-  console.log("Programacion de recordatorios reiniciada para curso " + courseId +
+  console.info("Programacion de recordatorios reiniciada para curso " + courseId +
     "; claves eliminadas=" + keys.length);
 }
 
@@ -1346,8 +1291,8 @@ function createCourseWorkFromConfig(creationConfig) {
    * modificar calificaciones desde la API de Classroom.
    */
   const created = Classroom.Courses.CourseWork.create(resource, creationConfig.courseId);
-  console.log("Tarea creada por Apps Script. courseId=" + creationConfig.courseId + ", courseWorkId=" + created.id);
-  console.log("La tarea se descubrira automaticamente si su titulo coincide con una regla activa.");
+  console.info("Tarea creada por Apps Script. courseId=" + creationConfig.courseId + ", courseWorkId=" + created.id);
+  console.info("La tarea se descubrira automaticamente si su titulo coincide con una regla activa.");
 
   return created;
 }
@@ -1389,7 +1334,7 @@ function getFutureCourseWorkDue_(dueDate, dueTime, taskTitle, now) {
   const currentTime = now instanceof Date ? now.getTime() : Date.now();
 
   if (comparisonTime <= currentTime) {
-    console.log("Se omitio la fecha limite pasada de la tarea '" +
+    console.info("Se omitio la fecha limite pasada de la tarea '" +
       String(taskTitle || "sin titulo") + "'. Corrigela en la hoja para actualizarla en Classroom.");
     return null;
   }
@@ -1415,7 +1360,7 @@ function diagnoseCourseWorkDeveloperAssociation(courseId, courseWorkId) {
     associatedWithDeveloper: courseWork.associatedWithDeveloper
   };
 
-  console.log("Diagnostico de asociacion de tarea: " + JSON.stringify(diagnostic));
+  console.info("Diagnostico de asociacion de tarea: " + JSON.stringify(diagnostic));
   return diagnostic;
 }
 
@@ -1441,7 +1386,7 @@ function getPendingSubmissionsForTask(taskConfig, courseWork) {
     })
     .sort(compareSubmissionsByUpdateTime);
 
-  console.log("Pendientes sin assignedGrade en " + courseWork.title + ": " + pending.length);
+  console.info("Pendientes sin assignedGrade en " + courseWork.title + ": " + pending.length);
   return pending;
 }
 
@@ -1460,7 +1405,7 @@ function getUnsubmittedSubmissionsForTask(taskConfig, courseWork) {
     })
     .sort(compareSubmissionsByUpdateTime);
 
-  console.log("Entregas NEW en " + courseWork.title + ": " + unsubmitted.length);
+  console.info("Entregas NEW en " + courseWork.title + ": " + unsubmitted.length);
   return unsubmitted;
 }
 
@@ -1588,10 +1533,10 @@ function testClassroomGradePermission() {
   const submission = submissions[0];
   const testGrade = taskConfig.invalidGrade || CONFIG.INVALID_GRADE;
 
-  console.log("Probando permisos con entrega: " + submission.id);
+  console.info("Probando permisos con entrega: " + submission.id);
 
   if (CONFIG.DRY_RUN) {
-    console.log("[DRY_RUN] Se probaria asignar " + (CONFIG.GRADE_FIELD_TO_WRITE || "assignedGrade") + "=" + testGrade + " a " + submission.id);
+    console.info("[DRY_RUN] Se probaria asignar " + (CONFIG.GRADE_FIELD_TO_WRITE || "assignedGrade") + "=" + testGrade + " a " + submission.id);
     return {
       dryRun: true,
       submissionId: submission.id,
@@ -1602,11 +1547,11 @@ function testClassroomGradePermission() {
 
   try {
     const response = assignGradeToSubmission(taskConfig, submission.id, testGrade);
-    console.log("Prueba de permisos completada: " + JSON.stringify(response));
+    console.info("Prueba de permisos completada: " + JSON.stringify(response));
     return response;
   } catch (error) {
     const diagnostic = diagnoseClassroomPermissionError(error);
-    console.log("Diagnostico de permisos: " + diagnostic);
+    console.info("Diagnostico de permisos: " + diagnostic);
     throw new Error(diagnostic);
   }
 }
@@ -1657,7 +1602,7 @@ function testListPendingSubmissionDetails() {
     };
   });
 
-  console.log("Detalle de entregas pendientes: " + JSON.stringify(details));
+  console.info("Detalle de entregas pendientes: " + JSON.stringify(details));
   return details;
 }
 
@@ -1698,7 +1643,7 @@ function testListAllSubmissionDetailsPruebasBot() {
     };
   });
 
-  console.log("Detalle de todas las entregas: " + JSON.stringify(details));
+  console.info("Detalle de todas las entregas: " + JSON.stringify(details));
   return details;
 }
 
@@ -1735,7 +1680,7 @@ function testClearBothGradesFromSubmission() {
   const submissionId = "PEGA_AQUI_EL_SUBMISSION_ID";
 
   if (CONFIG.DRY_RUN) {
-    console.log("[DRY_RUN] Se borrarian draftGrade y assignedGrade de submissionId=" + submissionId);
+    console.info("[DRY_RUN] Se borrarian draftGrade y assignedGrade de submissionId=" + submissionId);
     return {
       dryRun: true,
       action: "clearBothGradesFromSubmission",
@@ -1746,7 +1691,7 @@ function testClearBothGradesFromSubmission() {
   }
 
   const response = clearBothGradesFromSubmission(courseId, courseWorkId, submissionId);
-  console.log("Calificaciones borradas para submissionId=" + submissionId);
+  console.info("Calificaciones borradas para submissionId=" + submissionId);
   return response;
 }
 
@@ -1820,7 +1765,7 @@ function clearBothGradesFromCourseWork(courseId, courseWorkId) {
     }
   });
 
-  console.log("Resumen de limpieza de calificaciones de tarea: " + JSON.stringify(summary));
+  console.info("Resumen de limpieza de calificaciones de tarea: " + JSON.stringify(summary));
   return summary;
 }
 
@@ -1867,7 +1812,7 @@ function getClassroomUserProfile(userId) {
   try {
     return Classroom.UserProfiles.get(userId);
   } catch (error) {
-    console.log("No se pudo obtener perfil de usuario " + userId + ": " + errorToPlainText(error));
+    console.info("No se pudo obtener perfil de usuario " + userId + ": " + errorToPlainText(error));
     return null;
   }
 }
@@ -1895,7 +1840,7 @@ function getFirstPdfEvidenceFromSubmission(submission) {
         return fileData;
       }
     } catch (error) {
-      console.log("No se pudo leer adjunto " + attachment.driveFile.id + ": " + errorToPlainText(error));
+      console.info("No se pudo leer adjunto " + attachment.driveFile.id + ": " + errorToPlainText(error));
     }
   }
 
@@ -1996,81 +1941,6 @@ function ensurePdfFileName(name) {
 
 
 /**
- * Envia recordatorios de pendientes y vencidos para una tarea.
- *
- * Recibe: configuracion, CourseWork y entregas sin enviar.
- * Devuelve: nada.
- * Se usa: despues de detectar entregas NEW, como hacia el workflow n8n recuperado.
- */
-function sendPendingSubmissionNotifications(taskConfig, courseWork, submissions) {
-  if (!taskConfig.sendStudentNotifications) {
-    return;
-  }
-
-  submissions.forEach(function (submission) {
-    const reminderKey = "tarea:" + taskConfig.courseId + ":" + taskConfig.courseWorkId + ":" + submission.userId;
-    if (CONFIG.ENABLE_OVERDUE_NOTICES && isSubmissionOverdue(courseWork, submission)) {
-      if (isScheduledReminderDue_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour) &&
-          sendOverdueReminder(taskConfig, courseWork, submission)) {
-        markScheduledReminderSent_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour);
-      }
-      return;
-    }
-
-    if (CONFIG.ENABLE_REMINDERS && getCourseWorkDueDate(courseWork) &&
-        isScheduledReminderDue_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour)) {
-      if (sendDueSoonReminder(taskConfig, courseWork, submission)) {
-        markScheduledReminderSent_(reminderKey, taskConfig.reminderEveryDays, taskConfig.reminderHour);
-      }
-    }
-  });
-}
-
-/**
- * Envia recordatorio cuando falta poco para vencer.
- *
- * Recibe: configuracion, tarea y entrega.
- * Devuelve: nada.
- * Se usa: para pendientes dentro de la ventana de 24 horas.
- */
-function sendDueSoonReminder(taskConfig, courseWork, submission) {
-  const email = getEmailForSubmission(submission);
-  if (!email) {
-    console.log("No se encontro correo para recordatorio de usuario " + submission.userId);
-    return false;
-  }
-
-  MailApp.sendEmail({
-    to: email,
-    subject: "Recordatorio (24h): " + courseWork.title,
-    body: buildDueSoonEmailBody(courseWork, submission)
-  });
-  return true;
-}
-
-/**
- * Envia aviso cuando la evidencia esta vencida.
- *
- * Recibe: configuracion, tarea y entrega.
- * Devuelve: nada.
- * Se usa: para entregas late o despues de fecha limite.
- */
-function sendOverdueReminder(taskConfig, courseWork, submission) {
-  const email = getEmailForSubmission(submission);
-  if (!email) {
-    console.log("No se encontro correo para aviso vencido de usuario " + submission.userId);
-    return false;
-  }
-
-  MailApp.sendEmail({
-    to: email,
-    subject: "Evidencia vencida: " + courseWork.title,
-    body: buildOverdueEmailBody(courseWork, submission)
-  });
-  return true;
-}
-
-/**
  * Envia correo por error critico al responsable.
  *
  * Recibe: asunto y mensaje.
@@ -2137,21 +2007,6 @@ function getEmailForSubmission(submission) {
 var REMINDER_EMAIL_CACHE_ = {};
 
 /**
- * Indica si una entrega esta vencida.
- *
- * Recibe: CourseWork y StudentSubmission.
- * Devuelve: true si Classroom la marca late o si paso la fecha limite.
- * Se usa: para decidir aviso de evidencia vencida.
- */
-function isSubmissionOverdue(courseWork, submission) {
-  if (submission.late === true) {
-    return true;
-  }
-
-  return isCourseWorkOverdue(courseWork);
-}
-
-/**
  * Indica si una actividad ya paso su fecha limite.
  *
  * Recibe: CourseWork y, opcionalmente, la fecha actual para pruebas.
@@ -2162,26 +2017,6 @@ function isCourseWorkOverdue(courseWork, now) {
   const dueDate = getCourseWorkDueDate(courseWork);
   const currentDate = now || new Date();
   return dueDate ? currentDate.getTime() > dueDate.getTime() : false;
-}
-
-/**
- * Indica si la fecha limite esta dentro de la ventana de recordatorio.
- *
- * Recibe: CourseWork.
- * Devuelve: true si faltan menos de CONFIG.REMINDER_WINDOW_HOURS.
- * Se usa: para enviar recordatorio previo al vencimiento.
- */
-function isCourseWorkDueWithinReminderWindow(courseWork) {
-  const dueDate = getCourseWorkDueDate(courseWork);
-  if (!dueDate) {
-    return false;
-  }
-
-  const now = new Date().getTime();
-  const due = dueDate.getTime();
-  const windowMs = CONFIG.REMINDER_WINDOW_HOURS * 60 * 60 * 1000;
-
-  return due > now && due - now <= windowMs;
 }
 
 /**
@@ -2221,42 +2056,6 @@ function getCourseWorkDueDate(courseWork) {
     59,
     0
   );
-}
-
-/**
- * Construye mensaje de recordatorio.
- *
- * Recibe: CourseWork y entrega.
- * Devuelve: cuerpo del correo.
- * Se usa: en sendDueSoonReminder.
- */
-function buildDueSoonEmailBody(courseWork, submission) {
-  return [
-    "Hola.",
-    "",
-    "Tu evidencia de la tarea \"" + courseWork.title + "\" sigue pendiente de evaluacion.",
-    "La fecha limite esta proxima. Revisa que tu archivo PDF este entregado correctamente en Google Classroom.",
-    "",
-    "Este mensaje fue enviado automaticamente."
-  ].join("\n");
-}
-
-/**
- * Construye mensaje de evidencia vencida.
- *
- * Recibe: CourseWork y entrega.
- * Devuelve: cuerpo del correo.
- * Se usa: en sendOverdueReminder.
- */
-function buildOverdueEmailBody(courseWork, submission) {
-  return [
-    "Hola.",
-    "",
-    "La evidencia de la tarea \"" + courseWork.title + "\" aparece como vencida o atrasada.",
-    "Por favor revisa tu entrega en Google Classroom.",
-    "",
-    "Este mensaje fue enviado automaticamente."
-  ].join("\n");
 }
 
 
@@ -2391,7 +2190,7 @@ function createHourlyTrigger() {
     .everyHours(CONFIG.TRIGGER_EVERY_HOURS)
     .create();
 
-  console.log("Trigger creado cada " + CONFIG.TRIGGER_EVERY_HOURS + " hora(s).");
+  console.info("Trigger creado cada " + CONFIG.TRIGGER_EVERY_HOURS + " hora(s).");
 }
 
 /**
@@ -2412,7 +2211,7 @@ function deleteClassroomBotTriggers() {
     }
   });
 
-  console.log("Triggers eliminados: " + deleted);
+  console.info("Triggers eliminados: " + deleted);
   return deleted;
 }
 
