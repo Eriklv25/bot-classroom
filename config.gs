@@ -187,24 +187,6 @@ const TASK_RULES = [
   },
   {
     enabled: false,
-    title: "Evaluación Departamental",
-    reviewMode: REVIEW_MODES.AI,
-    exampleFileId: "ID_PDF_EVALUACION_DEPARTAMENTAL",
-    promptType: "visual_structure",
-    validGrade: 100,
-    invalidGrade: 60
-  },
-  {
-    enabled: false,
-    title: "Evaluación Docente",
-    reviewMode: REVIEW_MODES.AI,
-    exampleFileId: "ID_PDF_EVALUACION_DOCENTE",
-    promptType: "visual_structure",
-    validGrade: 100,
-    invalidGrade: 60
-  },
-  {
-    enabled: false,
     title: "Reporte Final",
     reviewMode: REVIEW_MODES.AI,
     exampleFileId: "ID_PDF_REPORTE_FINAL",
@@ -341,105 +323,91 @@ const COURSE_SETUP_TEMPLATE = {
       enabled: true,
       topicName: "INICIO DEL CURSO",
       title: "Evidencia de Instrumentación Didáctica",
-      description: "Sube la evidencia correspondiente en PDF.",
+      description: "Cargar la Instrumentación Didáctica correspondiente a cada uno de sus grupos.\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – ID – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-ID-MEC-AUTO IND-B\nLVE-ID-MECTR-MEC MAT-A\nLVE-ID-AMB-FLUIDOS-A\nLVE-ID-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "INICIO DEL CURSO",
       title: "Evidencia de Socializar la Instrumentación Didáctica",
-      description: "Sube la evidencia correspondiente en PDF.",
+      description: "Cargar la Lista de enterados con firmas, correspondiente a cada uno de sus grupos.\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – LE – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-LE-MEC-AUTO IND-B\nLVE-LE-MECTR-MEC MAT-A\nLVE-LE-AMB-FLUIDOS-A\nLVE-LE-IND-PROP MAT-B\n\nNOTAS:\nDescargue e imprima el formato \"LISTA DE ENTERADOS DE INSTRUMENTACIÓN DIDÁCTICA\" en el apartado de OPCIONES de cada uno de sus grupos registrados en el sistema CETECH.",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "INICIO DEL CURSO",
       title: "Evaluación diagnóstica",
-      description: "Realiza la evaluación diagnóstica indicada.",
+      description: "Cargar un ejemplar de la Evaluación Diagnóstica correspondiente a cada uno de sus grupos.\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – ED – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-ED-MEC-AUTO IND-B\nLVE-ED-MECTR-MEC MAT-A\nLVE-ED-AMB-FLUIDOS-A\nLVE-ED-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "CURSO",
       title: "Evidencia pase de lista primer parcial",
-      description: "Sube la evidencia del pase de lista correspondiente.",
+      description: "Cargar la evidencia de pase de lista del parcial de cada uno de sus grupos asignados del semestre en curso.\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – PL1 – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-PL1-MEC-AUTO IND-B\nLVE-PL1-MECTR-MEC MAT-A\nLVE-PL1-AMB-FLUIDOS-A\nLVE-PL1-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "CURSO",
       title: "Evidencia de Primer Parcial",
-      description: "Sube la evidencia correspondiente en PDF.",
+      description: "Cargar las evidencias del primer parcial de cada grupo asignado en el semestre en curso.\nCargar un archivo .ZIP o .RAR por grupo, que incluya todas las evidencias de aprendizaje de un solo estudiante (examen, reportes, presentaciones, tareas, etc.).\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – EP1 – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-EP1-MEC-AUTO IND-B\nLVE-EP1-MECTR-MEC MAT-A\nLVE-EP1-AMB-FLUIDOS-A\nLVE-EP1-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "CURSO",
       title: "Evidencia pase de lista segundo parcial",
-      description: "Sube la evidencia del pase de lista correspondiente.",
+      description: "Cargar la evidencia de pase de lista del parcial de cada uno de sus grupos asignados del semestre en curso.\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – PL2 – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-PL2-MEC-AUTO IND-B\nLVE-PL2-MECTR-MEC MAT-A\nLVE-PL2-AMB-FLUIDOS-A\nLVE-PL2-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "CURSO",
       title: "Evidencia del Segundo Parcial",
-      description: "Sube la evidencia correspondiente en PDF.",
+      description: "Cargar las evidencias del segundo parcial de cada grupo asignado en el semestre en curso.\nCargar un archivo .ZIP o .RAR por grupo, que incluya todas las evidencias de aprendizaje de un solo estudiante (examen, reportes, presentaciones, tareas, etc.).\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – EP2 – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-EP2-MEC-AUTO IND-B\nLVE-EP2-MECTR-MEC MAT-A\nLVE-EP2-AMB-FLUIDOS-A\nLVE-EP2-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "CURSO",
       title: "Evidencia pase de lista tercer parcial",
-      description: "Sube la evidencia del pase de lista correspondiente.",
+      description: "Cargar la evidencia de pase de lista del parcial de cada uno de sus grupos asignados del semestre en curso.\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – PL3 – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-PL3-MEC-AUTO IND-B\nLVE-PL3-MECTR-MEC MAT-A\nLVE-PL3-AMB-FLUIDOS-A\nLVE-PL3-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "CURSO",
       title: "Evidencia del Tercer Parcial",
-      description: "Sube la evidencia correspondiente en PDF.",
+      description: "Cargar las evidencias del tercer parcial de cada grupo asignado en el semestre en curso.\nCargar un archivo .ZIP o .RAR por grupo, que incluya todas las evidencias de aprendizaje de un solo estudiante (examen, reportes, presentaciones, tareas, etc.).\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – EP3 – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-EP3-MEC-AUTO IND-B\nLVE-EP3-MECTR-MEC MAT-A\nLVE-EP3-AMB-FLUIDOS-A\nLVE-EP3-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "CURSO",
       title: "Evidencia pase de lista cuarto parcial",
-      description: "Sube la evidencia del pase de lista correspondiente.",
+      description: "Cargar la evidencia de pase de lista del parcial de cada uno de sus grupos asignados del semestre en curso.\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – PL4 – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-PL4-MEC-AUTO IND-B\nLVE-PL4-MECTR-MEC MAT-A\nLVE-PL4-AMB-FLUIDOS-A\nLVE-PL4-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "CURSO",
       title: "Evidencia del Cuarto parcial",
-      description: "Sube la evidencia correspondiente en PDF.",
-      dueDate: null
-    },
-    {
-      enabled: true,
-      topicName: "FINAL DEL CURSO",
-      title: "Evaluación Departamental",
-      description: "Realiza la evaluación departamental indicada.",
-      dueDate: null
-    },
-    {
-      enabled: true,
-      topicName: "FINAL DEL CURSO",
-      title: "Evaluación Docente",
-      description: "Realiza la evaluación docente indicada.",
+      description: "Cargar las evidencias del cuarto parcial de cada grupo asignado en el semestre en curso.\nCargar un archivo .ZIP o .RAR por grupo, que incluya todas las evidencias de aprendizaje de un solo estudiante (examen, reportes, presentaciones, tareas, etc.).\nCada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – EP4 – abreviación de la carrera – abreviación de la asignatura – grupo.\nEjemplos:\nLVE-EP4-MEC-AUTO IND-B\nLVE-EP4-MECTR-MEC MAT-A\nLVE-EP4-AMB-FLUIDOS-A\nLVE-EP4-IND-PROP MAT-B",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "FINAL DEL CURSO",
       title: "Reporte Final",
-      description: "Sube el reporte final en PDF.",
+      description: "Cargar su reporte final sin firmas. El archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – RF\nEjemplos:\nLVE-RF\n\nDicho reporte estará disponible una vez que se haya realizado el registro de calificaciones de todos sus grupos. Podrá descargarlo desde el apartado Portal académico del menú principal de opciones del CETECH, seleccionando el periodo en curso.\n\nUna vez cargado el reporte en esta plataforma, deberá acudir con la compañera Marce, quien realizará la impresión correspondiente, a fin de que usted pueda firmarlo con tinta azul.",
       dueDate: null
     },
     {
       enabled: true,
       topicName: "FINAL DEL CURSO",
       title: "ACTAS FINALES de calificaciones",
-      description: "Sube las actas finales de calificaciones.",
+      description: "Cargar sus actas de calificaciones (sin firmas) de cada una de sus asignaturas del semestre, incluyendo las del programa de posgrado, en caso de que aplique. Cada archivo deberá identificarse utilizando la siguiente estructura:\nIniciales del docente (Apellido paterno, Apellido materno y nombres) – LIC/MC/DC – abreviación del programa – abreviación de la asignatura – grupo\nEjemplos:\nEJEMPLO MATERIA LICENCIATURA: LVE-LIC-MEC-AUTO IND-B\nEJEMPLO MATERIA LICENCIATURA: LVE-LIC-MECTR-MEC MAT-A\nEJEMPLO MATERIA LICENCIATURA: LVE-LIC-AMB-FLUIDOS-A\nEJEMPLO MATERIA LICENCIATURA: LVE-LIC-IND-PROP MAT-A\nEJEMPLO MATERIA POSGRADO: LVE-MC-MEC-MAT AV-A\n\nEl acta de calificaciones puede descargarse desde el mismo apartado en el que se capturan las calificaciones, una vez que el registro haya sido realizado.\n\nUna vez cargadas las actas en esta plataforma, deberá acudir con la compañera Marce para que ella realice la impresión correspondiente y pueda usted firmarlas con tinta azul.",
       dueDate: null
     }
   ]
