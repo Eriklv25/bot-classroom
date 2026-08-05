@@ -69,7 +69,6 @@ function onOpen() {
     ensureReminderTriggerField_(spreadsheet);
     ensureParticipantColumns_(spreadsheet);
     ensureTaskColumns_(spreadsheet);
-    removeLegacyTaskReminderColumns_(spreadsheet);
   }
   SpreadsheetApp.getUi().createMenu("Bot Classroom")
     .addItem("Elegir carpeta de almacenamiento", "elegirCarpetaDeAlmacenamiento")
@@ -102,28 +101,32 @@ function elegirCarpetaDeAlmacenamiento() {
 
 /** Aplica desde EJECUTAR todos los cambios, incluidas las tareas seleccionadas. */
 function ejecutarCambiosDelCurso(event) {
-  if (event && event.source) ensureCourseRetirementControl_(event.source);
-  if (event && event.source) ensureParticipantColumns_(event.source);
-  if (event && event.source) ensureTaskColumns_(event.source);
-  if (event && event.source) removeLegacyTaskReminderColumns_(event.source);
+  // Los activadores onEdit se disparan con cualquier cambio de la hoja. Antes se
+  // ejecutaban migraciones de columnas en cada edicion y eso podia agotar el
+  // servicio de Spreadsheets en hojas ya elaboradas. Solo prepara la estructura
+  // cuando el usuario usa los controles de Plantilla de curso.
+  if (event && !isCourseExecutionEdit_(event) && !isCourseRegistryRemovalEdit_(event)) return null;
+
+  const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
+  ensureCourseRetirementControl_(spreadsheet);
   if (event && isCourseRegistryRemovalEdit_(event)) {
     const courseId = String(event.value || "").trim();
     const result = retirarCursoDelRegistro(courseId);
     // Conserva el ID visible si la operacion falla (por ejemplo, si otra
     // ejecucion mantiene el lock) para que el usuario pueda volver a intentar.
     event.range.clearContent();
-    const templateSheet = requireSheet_(event.source, CONFIG_SHEET_NAMES.TEMPLATE);
+    const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
     setCourseExecutionStatus_(templateSheet, result.removed ? "CURSO RETIRADO" : "SIN CAMBIOS",
       result.removed
         ? "Se retiro del registro el curso " + courseId + ". No se borro su hoja ni Classroom."
         : "El curso " + courseId + " no estaba registrado.");
     return result;
   }
-  if (event && !isCourseExecutionEdit_(event)) return null;
-  const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
+
   ensureReminderTriggerField_(spreadsheet);
   ensureParticipantColumns_(spreadsheet);
   ensureTaskColumns_(spreadsheet);
+  removeLegacyTaskReminderColumns_(spreadsheet);
   const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
   if (event) event.range.setValue(false);
   const lock = LockService.getScriptLock();
@@ -219,8 +222,14 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
       trigger.getEventType() === ScriptApp.EventType.ON_OPEN;
   }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
 
-  // Conserva exactamente un trigger de edicion para esta hoja. Ademas de evitar
-  // duplicados, hacerlo despues de la limpieza libera cuota antes de crear uno.
+  // Antes de crear un onEdit para una hoja nueva, retira triggers que ya no
+  // corresponden a hojas registradas. Esto libera cuota cuando se han creado
+  // hojas de prueba, hojas enviadas a papelera o duplicados de versiones previas.
+  cleanupConfigurationEditTriggers_(spreadsheetId);
+
+  // Conserva exactamente un trigger de edicion para esta hoja. Si aun asi la
+  // cuenta del proyecto ya llego al limite, no se cancela la creacion de la hoja:
+  // se deja el diagnostico visible para que el usuario retire hojas antiguas.
   triggers = ScriptApp.getProjectTriggers();
   const editTriggers = triggers.filter(function (trigger) {
     return trigger.getHandlerFunction() === "ejecutarCambiosDelCurso" &&
@@ -229,7 +238,11 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
   });
   editTriggers.slice(1).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
   if (!editTriggers.length) {
-    ScriptApp.newTrigger("ejecutarCambiosDelCurso").forSpreadsheet(spreadsheet).onEdit().create();
+    try {
+      ScriptApp.newTrigger("ejecutarCambiosDelCurso").forSpreadsheet(spreadsheet).onEdit().create();
+    } catch (error) {
+      handleConfigurationTriggerCreationError_(spreadsheet, error);
+    }
   }
 
   triggers = ScriptApp.getProjectTriggers();
@@ -248,6 +261,46 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
     properties.setProperty(REMINDER_TRIGGER_PROPERTY, String(intervalMinutes));
     properties.setProperty(REMINDER_TRIGGER_MODE_PROPERTY, REMINDER_TRIGGER_MODE);
   }
+}
+
+function cleanupConfigurationEditTriggers_(currentSpreadsheetId) {
+  const activeSpreadsheetIds = {};
+  if (currentSpreadsheetId) activeSpreadsheetIds[String(currentSpreadsheetId)] = true;
+  const registry = getCourseSpreadsheetRegistry_();
+  Object.keys(registry).forEach(function (courseId) {
+    const spreadsheetId = String(registry[courseId] || "").trim();
+    if (spreadsheetId) activeSpreadsheetIds[spreadsheetId] = true;
+  });
+
+  const grouped = {};
+  ScriptApp.getProjectTriggers().filter(function (trigger) {
+    return trigger.getHandlerFunction() === "ejecutarCambiosDelCurso" &&
+      trigger.getEventType() === ScriptApp.EventType.ON_EDIT;
+  }).forEach(function (trigger) {
+    const sourceId = String(trigger.getTriggerSourceId && trigger.getTriggerSourceId() || "");
+    if (!sourceId || !activeSpreadsheetIds[sourceId]) {
+      ScriptApp.deleteTrigger(trigger);
+      return;
+    }
+    if (!grouped[sourceId]) grouped[sourceId] = [];
+    grouped[sourceId].push(trigger);
+  });
+
+  Object.keys(grouped).forEach(function (sourceId) {
+    grouped[sourceId].slice(1).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+  });
+}
+
+function handleConfigurationTriggerCreationError_(spreadsheet, error) {
+  const message = errorToPlainText(error);
+  if (message.indexOf("too many triggers") === -1 && message.indexOf("demasiados activadores") === -1) {
+    throw error;
+  }
+  const sheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  setCourseExecutionStatus_(sheet, "SIN ACTIVADOR",
+    "La hoja se creo, pero no se pudo instalar su activador de edicion porque el proyecto llego al limite de triggers. " +
+    "Retira IDs antiguos con B10 o ejecuta limpiarRegistroDeCursosEnPapelera y vuelve a intentar EJECUTAR.");
+  console.warn("No se pudo crear el activador de edicion para " + spreadsheet.getId() + ": " + message);
 }
 
 /**
