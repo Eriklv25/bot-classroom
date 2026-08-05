@@ -122,7 +122,7 @@ agregues manualmente si hace falta.
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
 aceptar. `textoRecordatorioInvitacion` permite editar el texto del correo; el
-bot antepone automaticamente `Estimado(a) docente NOMBRE_PROFESOR`.
+bot usa la columna `emailName` de **Participantes** como saludo editable.
 `recordatorioPendientesCadaDias`, `horaRecordatorioPendientes` y
 `textoRecordatorioPendientes` configuran el correo general con las actividades
 vencidas que siguen pendientes.
@@ -208,7 +208,10 @@ seguridad, el flujo no elimina
 automáticamente participantes, temas ni tareas que quites de la hoja.
 
 En **Participantes** puedes marcar o desmarcar cualquier persona en cualquier
-momento. También puedes escribir nombre y correo en una fila vacía, elegir
+momento. La columna `emailName` define el saludo exacto para los correos de
+recordatorio; si queda vacía en hojas antiguas, el bot conserva el saludo
+heredado con el campo `name`. También puedes escribir nombre, saludo y correo en
+una fila vacía, elegir
 **ALUMNO** o **PROFESOR** en la columna `rol` y marcar su casilla. Al volver a ejecutar los cambios, solo se intenta
 invitar a las filas marcadas; quienes ya están inscritos o invitados se omiten
 sin error. Classroom aplica a cada persona el rol elegido en la hoja.

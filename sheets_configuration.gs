@@ -35,7 +35,7 @@ const TASK_COLUMNS = [
   "validGrade", "invalidGrade", "maxPoints", "dueDate", "dueTime"
 ];
 
-const PARTICIPANT_COLUMNS = ["selected", "name", "email", "rol"];
+const PARTICIPANT_COLUMNS = ["selected", "name", "emailName", "email", "rol"];
 
 /** Crea una hoja independiente para un curso nuevo sin modificar hojas anteriores. */
 function createConfigurationSpreadsheet() {
@@ -67,8 +67,8 @@ function onOpen() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   if (spreadsheet && spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TEMPLATE)) {
     ensureReminderTriggerField_(spreadsheet);
+    ensureParticipantColumns_(spreadsheet);
     ensureTaskColumns_(spreadsheet);
-    removeLegacyTaskReminderColumns_(spreadsheet);
   }
   SpreadsheetApp.getUi().createMenu("Bot Classroom")
     .addItem("Elegir carpeta de almacenamiento", "elegirCarpetaDeAlmacenamiento")
@@ -101,26 +101,32 @@ function elegirCarpetaDeAlmacenamiento() {
 
 /** Aplica desde EJECUTAR todos los cambios, incluidas las tareas seleccionadas. */
 function ejecutarCambiosDelCurso(event) {
-  if (event && event.source) ensureCourseRetirementControl_(event.source);
-  if (event && event.source) ensureTaskColumns_(event.source);
-  if (event && event.source) removeLegacyTaskReminderColumns_(event.source);
+  // Los activadores onEdit se disparan con cualquier cambio de la hoja. Antes se
+  // ejecutaban migraciones de columnas en cada edicion y eso podia agotar el
+  // servicio de Spreadsheets en hojas ya elaboradas. Solo prepara la estructura
+  // cuando el usuario usa los controles de Plantilla de curso.
+  if (event && !isCourseExecutionEdit_(event) && !isCourseRegistryRemovalEdit_(event)) return null;
+
+  const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
+  ensureCourseRetirementControl_(spreadsheet);
   if (event && isCourseRegistryRemovalEdit_(event)) {
     const courseId = String(event.value || "").trim();
     const result = retirarCursoDelRegistro(courseId);
     // Conserva el ID visible si la operacion falla (por ejemplo, si otra
     // ejecucion mantiene el lock) para que el usuario pueda volver a intentar.
     event.range.clearContent();
-    const templateSheet = requireSheet_(event.source, CONFIG_SHEET_NAMES.TEMPLATE);
+    const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
     setCourseExecutionStatus_(templateSheet, result.removed ? "CURSO RETIRADO" : "SIN CAMBIOS",
       result.removed
         ? "Se retiro del registro el curso " + courseId + ". No se borro su hoja ni Classroom."
         : "El curso " + courseId + " no estaba registrado.");
     return result;
   }
-  if (event && !isCourseExecutionEdit_(event)) return null;
-  const spreadsheet = event && event.source ? event.source : getConfigurationSpreadsheet_();
+
   ensureReminderTriggerField_(spreadsheet);
+  ensureParticipantColumns_(spreadsheet);
   ensureTaskColumns_(spreadsheet);
+  removeLegacyTaskReminderColumns_(spreadsheet);
   const templateSheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
   if (event) event.range.setValue(false);
   const lock = LockService.getScriptLock();
@@ -216,8 +222,14 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
       trigger.getEventType() === ScriptApp.EventType.ON_OPEN;
   }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
 
-  // Conserva exactamente un trigger de edicion para esta hoja. Ademas de evitar
-  // duplicados, hacerlo despues de la limpieza libera cuota antes de crear uno.
+  // Antes de crear un onEdit para una hoja nueva, retira triggers que ya no
+  // corresponden a hojas registradas. Esto libera cuota cuando se han creado
+  // hojas de prueba, hojas enviadas a papelera o duplicados de versiones previas.
+  cleanupConfigurationEditTriggers_(spreadsheetId);
+
+  // Conserva exactamente un trigger de edicion para esta hoja. Si aun asi la
+  // cuenta del proyecto ya llego al limite, no se cancela la creacion de la hoja:
+  // se deja el diagnostico visible para que el usuario retire hojas antiguas.
   triggers = ScriptApp.getProjectTriggers();
   const editTriggers = triggers.filter(function (trigger) {
     return trigger.getHandlerFunction() === "ejecutarCambiosDelCurso" &&
@@ -226,7 +238,11 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
   });
   editTriggers.slice(1).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
   if (!editTriggers.length) {
-    ScriptApp.newTrigger("ejecutarCambiosDelCurso").forSpreadsheet(spreadsheet).onEdit().create();
+    try {
+      ScriptApp.newTrigger("ejecutarCambiosDelCurso").forSpreadsheet(spreadsheet).onEdit().create();
+    } catch (error) {
+      handleConfigurationTriggerCreationError_(spreadsheet, error);
+    }
   }
 
   triggers = ScriptApp.getProjectTriggers();
@@ -245,6 +261,46 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
     properties.setProperty(REMINDER_TRIGGER_PROPERTY, String(intervalMinutes));
     properties.setProperty(REMINDER_TRIGGER_MODE_PROPERTY, REMINDER_TRIGGER_MODE);
   }
+}
+
+function cleanupConfigurationEditTriggers_(currentSpreadsheetId) {
+  const activeSpreadsheetIds = {};
+  if (currentSpreadsheetId) activeSpreadsheetIds[String(currentSpreadsheetId)] = true;
+  const registry = getCourseSpreadsheetRegistry_();
+  Object.keys(registry).forEach(function (courseId) {
+    const spreadsheetId = String(registry[courseId] || "").trim();
+    if (spreadsheetId) activeSpreadsheetIds[spreadsheetId] = true;
+  });
+
+  const grouped = {};
+  ScriptApp.getProjectTriggers().filter(function (trigger) {
+    return trigger.getHandlerFunction() === "ejecutarCambiosDelCurso" &&
+      trigger.getEventType() === ScriptApp.EventType.ON_EDIT;
+  }).forEach(function (trigger) {
+    const sourceId = String(trigger.getTriggerSourceId && trigger.getTriggerSourceId() || "");
+    if (!sourceId || !activeSpreadsheetIds[sourceId]) {
+      ScriptApp.deleteTrigger(trigger);
+      return;
+    }
+    if (!grouped[sourceId]) grouped[sourceId] = [];
+    grouped[sourceId].push(trigger);
+  });
+
+  Object.keys(grouped).forEach(function (sourceId) {
+    grouped[sourceId].slice(1).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+  });
+}
+
+function handleConfigurationTriggerCreationError_(spreadsheet, error) {
+  const message = errorToPlainText(error);
+  if (message.indexOf("too many triggers") === -1 && message.indexOf("demasiados activadores") === -1) {
+    throw error;
+  }
+  const sheet = requireSheet_(spreadsheet, CONFIG_SHEET_NAMES.TEMPLATE);
+  setCourseExecutionStatus_(sheet, "SIN ACTIVADOR",
+    "La hoja se creo, pero no se pudo instalar su activador de edicion porque el proyecto llego al limite de triggers. " +
+    "Retira IDs antiguos con B10 o ejecuta limpiarRegistroDeCursosEnPapelera y vuelve a intentar EJECUTAR.");
+  console.warn("No se pudo crear el activador de edicion para " + spreadsheet.getId() + ": " + message);
 }
 
 /**
@@ -537,11 +593,13 @@ function writeParticipantsSheet_(sheet) {
   sheet.getRange(2, 1, editableRows, 1).insertCheckboxes();
   sheet.getRange(1, 1).setNote("Marca la casilla para invitar a esta persona. Puedes agregar nuevos participantes en las filas vacias.");
   const roleRule = SpreadsheetApp.newDataValidation().requireValueInList(["ALUMNO", "PROFESOR"], true).build();
-  sheet.getRange(2, 4, editableRows, 1).setDataValidation(roleRule);
-  sheet.getRange(1, 4).setNote("Elige ALUMNO o PROFESOR para definir el rol de la invitacion en Classroom.");
+  sheet.getRange(2, 5, editableRows, 1).setDataValidation(roleRule);
+  sheet.getRange(1, 3).setNote("Texto que se usara como saludo en los correos de recordatorio.");
+  sheet.getRange(1, 5).setNote("Elige ALUMNO o PROFESOR para definir el rol de la invitacion en Classroom.");
   sheet.setColumnWidth(2, 260);
-  sheet.setColumnWidth(3, 280);
-  sheet.setColumnWidth(4, 130);
+  sheet.setColumnWidth(3, 220);
+  sheet.setColumnWidth(4, 280);
+  sheet.setColumnWidth(5, 130);
 }
 
 function writeTemplateSheet_(sheet) {
@@ -600,9 +658,9 @@ function ensureReminderTriggerField_(spreadsheet) {
     }
   }
   addMissingTemplateField_(sheet, values, "textoRecordatorioInvitacion",
-    "Sigue pendiente tu invitacion al curso de Classroom.");
+    "Sigue pendiente su invitacion al curso de Classroom. Por favor acepte el curso para poder cargar sus evidencias del semestre. Le agradezco de antemano.");
   addMissingTemplateField_(sheet, values, "textoRecordatorioPendientes",
-    "Estas actividades vencidas siguen pendientes:");
+    "Le comunico que las siguientes actividades siguen pendientes. Favor de cargar sus evidencias. Le agradezco de antemano.");
   if (!fieldRow) {
     fieldRow = addMissingTemplateField_(sheet, values,
       "intervaloTriggerRecordatoriosMinutos", DEFAULT_REMINDER_TRIGGER_MINUTES);
@@ -641,7 +699,7 @@ function writeTasksSheet_(sheet) {
       topic: work.topicName || "", nombreActividad: work.title,
       textoActividad: work.textoActividad || work.description || "", linksAdjuntos: serializeLinks_(work.linksAdjuntos),
       reviewMode: rule.reviewMode || REVIEW_MODES.DOCUMENT_ONLY,
-      exampleLink: rule.exampleFileUrl || rule.exampleFileId || "", prompt: rule.prompt || "",
+      exampleLink: "", prompt: rule.prompt || "",
       validGrade: rule.validGrade || CONFIG.VALID_GRADE, invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
       maxPoints: work.maxPoints || COURSE_SETUP_TEMPLATE.defaultMaxPoints,
       dueDate: work.dueDate ? formatDateParts_(work.dueDate) : "", dueTime: work.dueTime ? formatTimeParts_(work.dueTime) : ""
@@ -665,6 +723,28 @@ function writeTasksSheet_(sheet) {
   sheet.getRange(2, 9, editableRows, 1).setDataValidation(reviewRule);
 }
 
+
+function ensureParticipantColumns_(spreadsheet) {
+  const sheet = spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.STUDENTS);
+  if (!sheet || sheet.getLastColumn() === 0) return;
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String);
+  PARTICIPANT_COLUMNS.forEach(function (header) {
+    if (headers.indexOf(header) !== -1) return;
+    sheet.getRange(1, sheet.getLastColumn() + 1).setValue(header);
+    headers.push(header);
+  });
+  const editableRows = Math.max(sheet.getLastRow() + 25, 50);
+  const roleColumn = headers.indexOf("rol") + 1;
+  if (roleColumn > 0) {
+    const roleRule = SpreadsheetApp.newDataValidation().requireValueInList(["ALUMNO", "PROFESOR"], true).build();
+    sheet.getRange(2, roleColumn, editableRows, 1).setDataValidation(roleRule);
+    sheet.getRange(1, roleColumn).setNote("Elige ALUMNO o PROFESOR para definir el rol de la invitacion en Classroom.");
+  }
+  const emailNameColumn = headers.indexOf("emailName") + 1;
+  if (emailNameColumn > 0) {
+    sheet.getRange(1, emailNameColumn).setNote("Texto que se usara como saludo en los correos de recordatorio.");
+  }
+}
 
 function ensureTaskColumns_(spreadsheet) {
   const sheet = spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TASKS);
@@ -712,12 +792,12 @@ function applyCourseTemplate_(spreadsheet) {
   COURSE_SETUP_TEMPLATE.teacherInvitationReminder = Object.assign({}, COURSE_SETUP_TEMPLATE.teacherInvitationReminder, {
     everyDays: nonNegativeInteger_(values.recordatorioInvitacionCadaDias, 2),
     hour: normalizeHour_(values.horaRecordatorioInvitacion, "09:00"),
-    bodyIntro: String(values.textoRecordatorioInvitacion || "Sigue pendiente tu invitacion al curso de Classroom.")
+    bodyIntro: String(values.textoRecordatorioInvitacion || "Sigue pendiente su invitacion al curso de Classroom. Por favor acepte el curso para poder cargar sus evidencias del semestre. Le agradezco de antemano.")
   });
   COURSE_SETUP_TEMPLATE.pendingActivitiesReminder = Object.assign({}, COURSE_SETUP_TEMPLATE.pendingActivitiesReminder, {
     everyDays: nonNegativeInteger_(values.recordatorioPendientesCadaDias, 2),
     hour: normalizeHour_(values.horaRecordatorioPendientes, "10:00"),
-    bodyIntro: String(values.textoRecordatorioPendientes || "Estas actividades vencidas siguen pendientes:")
+    bodyIntro: String(values.textoRecordatorioPendientes || "Le comunico que las siguientes actividades siguen pendientes. Favor de cargar sus evidencias. Le agradezco de antemano.")
   });
   COURSE_SETUP_TEMPLATE.reminderTriggerEveryMinutes = normalizeReminderTriggerMinutes_(
     values.intervaloTriggerRecordatoriosMinutos, DEFAULT_REMINDER_TRIGGER_MINUTES);

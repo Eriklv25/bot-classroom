@@ -739,7 +739,7 @@ function sendTeacherInvitationRemindersFromTemplate(skipConfigurationLoad) {
       to: email,
       subject: reminderConfig.subject || "Recordatorio: acepta la invitacion al curso de Classroom",
       body: [
-        formatReminderGreeting_(findParticipantNameByEmail_(email)),
+        formatReminderGreeting_(findParticipantEmailNameByEmail_(email)),
         "",
         reminderConfig.bodyIntro || "Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
         "",
@@ -1056,7 +1056,7 @@ function sendCourseInvitationRemindersForCourse_(course) {
       to: email,
       subject: reminderConfig.subject || "Recordatorio: acepta la invitacion al curso de Classroom",
       body: [
-        formatReminderGreeting_(findParticipantNameByEmail_(email)),
+        formatReminderGreeting_(findParticipantEmailNameByEmail_(email)),
         "",
         reminderConfig.bodyIntro || "Sigue pendiente que aceptes tu invitacion al curso de Classroom.",
         "",
@@ -1112,7 +1112,7 @@ function sendPendingActivitiesSummary_(courseId, control) {
       to: email,
       subject: "Actividades pendientes: " + (course.name || courseId),
       body: [
-        formatReminderGreeting_(findParticipantNameByEmail_(email)),
+        formatReminderGreeting_(findParticipantEmailNameByEmail_(email)),
         "",
         (COURSE_SETUP_TEMPLATE.pendingActivitiesReminder || {}).bodyIntro || "Estas actividades vencidas siguen pendientes:",
         "- " + pendingByEmail[email].join("\n- ")
@@ -1322,21 +1322,24 @@ function createCourseWorkMaterialsFromLinks_(links) {
   });
 }
 
-function findParticipantNameByEmail_(email) {
+function findParticipantEmailNameByEmail_(email) {
   const cleanEmail = String(email || "").trim().toLowerCase();
   if (!cleanEmail) return "";
   const participants = COURSE_SETUP_TEMPLATE.students || [];
   for (let index = 0; index < participants.length; index++) {
     const participant = participants[index] || {};
     if (String(participant.email || "").trim().toLowerCase() === cleanEmail) {
-      return String(participant.name || "").trim();
+      const emailName = String(participant.emailName || "").trim();
+      if (emailName) return emailName;
+      const legacyName = String(participant.name || "").trim();
+      return legacyName ? "Estimado(a) docente " + legacyName : "";
     }
   }
   return cleanEmail;
 }
 
-function formatReminderGreeting_(name) {
-  return "Estimado(a) docente " + (String(name || "").trim() || "docente");
+function formatReminderGreeting_(emailName) {
+  return String(emailName || "").trim() || "Estimado(a) docente";
 }
 
 /** Convierte la fecha/hora civil de CDMX a los campos UTC requeridos por Classroom. */
