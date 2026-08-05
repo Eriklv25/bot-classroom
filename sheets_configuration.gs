@@ -30,9 +30,9 @@ const COURSE_EXECUTION_CONTROL = {
 };
 
 const TASK_COLUMNS = [
-  "crearAhora", "enabled", "publicarAhora", "topic", "nombreActividad", "descripcion",
-  "reviewMode", "exampleId", "prompt", "validGrade", "invalidGrade",
-  "maxPoints", "state", "dueDate", "dueTime", "textoActividad", "linksAdjuntos"
+  "crearAhora", "enabled", "publicarAhora", "state", "topic", "nombreActividad",
+  "textoActividad", "linksAdjuntos", "reviewMode", "exampleLink", "prompt",
+  "validGrade", "invalidGrade", "maxPoints", "dueDate", "dueTime"
 ];
 
 const PARTICIPANT_COLUMNS = ["selected", "name", "email", "rol"];
@@ -637,30 +637,32 @@ function writeTasksSheet_(sheet) {
   const rows = COURSE_SETUP_TEMPLATE.courseWork.map(function (work) {
     const rule = rulesByTitle[normalizeTaskTitle(work.title)] || {};
     return {
-      crearAhora: false, enabled: work.enabled !== false, publicarAhora: work.state === "PUBLISHED",
-      topic: work.topicName || "", nombreActividad: work.title, descripcion: work.description || "",
+      crearAhora: true, enabled: work.enabled !== false, publicarAhora: true, state: work.state !== "DRAFT",
+      topic: work.topicName || "", nombreActividad: work.title,
+      textoActividad: work.textoActividad || work.description || "", linksAdjuntos: serializeLinks_(work.linksAdjuntos),
       reviewMode: rule.reviewMode || REVIEW_MODES.DOCUMENT_ONLY,
-      exampleId: rule.exampleFileId || "", prompt: rule.prompt || "",
+      exampleLink: rule.exampleFileUrl || rule.exampleFileId || "", prompt: rule.prompt || "",
       validGrade: rule.validGrade || CONFIG.VALID_GRADE, invalidGrade: rule.invalidGrade || CONFIG.INVALID_GRADE,
-      maxPoints: work.maxPoints || COURSE_SETUP_TEMPLATE.defaultMaxPoints, state: work.state || COURSE_SETUP_TEMPLATE.defaultState,
-      dueDate: work.dueDate ? formatDateParts_(work.dueDate) : "", dueTime: work.dueTime ? formatTimeParts_(work.dueTime) : "",
-      textoActividad: work.textoActividad || work.description || "", linksAdjuntos: serializeLinks_(work.linksAdjuntos)
+      maxPoints: work.maxPoints || COURSE_SETUP_TEMPLATE.defaultMaxPoints,
+      dueDate: work.dueDate ? formatDateParts_(work.dueDate) : "", dueTime: work.dueTime ? formatTimeParts_(work.dueTime) : ""
     };
   });
   writeTableWithHeaders_(sheet, TASK_COLUMNS, rows);
   const editableRows = Math.max(rows.length + 25, 50);
-  sheet.getRange(2, 1, editableRows, 3).insertCheckboxes();
+  sheet.getRange(2, 1, editableRows, 4).insertCheckboxes();
   sheet.getRange(1, 1).setNote("Selecciona una o varias tareas y despues marca EJECUTAR en Plantilla de curso. Las casillas permanecen seleccionadas como referencia.");
   sheet.getRange(1, 2).setNote("Activa o desactiva la revision automatica de esta tarea. No crea la tarea en Classroom.");
-  sheet.getRange(1, 3).setNote("Si esta casilla no se activa, la actividad queda como borrador. Si se activa, se publica directamente en Classroom.");
-  sheet.getRange(1, 14).setNote("Fecha limite en formato AAAA-MM-DD (por ejemplo, 2026-08-31).");
-  sheet.getRange(1, 15).setNote("Hora limite en formato HH:MM de 24 horas (por ejemplo, 23:59), usando la zona horaria indicada en Plantilla de curso.");
-  sheet.getRange(1, 16).setNote("Texto que se mostrara en Classroom para esta actividad. Si se deja vacio, se usa descripcion.");
-  sheet.getRange(1, 17).setNote("Pega una o varias ligas de Drive o web para adjuntar a la tarea, separadas por coma o salto de linea.");
-  sheet.getRange(2, 14, editableRows, 1).setNumberFormat("yyyy-mm-dd");
-  sheet.getRange(2, 15, editableRows, 1).setNumberFormat("hh:mm");
+  sheet.getRange(1, 3).setNote("Casilla informativa heredada para publicar ahora; se deja marcada por defecto.");
+  sheet.getRange(1, 4).setNote("Marcada publica calificaciones/tarea directamente. Sin marcar queda como DRAFT.");
+  sheet.getRange(1, 7).setNote("Texto que se mostrara en Classroom para esta actividad.");
+  sheet.getRange(1, 8).setNote("Pega una o varias ligas de Drive o web para adjuntar a la tarea, separadas por coma o salto de linea.");
+  sheet.getRange(1, 10).setNote("Pega la liga del archivo de ejemplo en Drive; el bot extrae el ID automaticamente para OpenAI.");
+  sheet.getRange(1, 15).setNote("Fecha limite en formato AAAA-MM-DD (por ejemplo, 2026-08-31).");
+  sheet.getRange(1, 16).setNote("Hora limite en formato HH:MM de 24 horas (por ejemplo, 23:59), usando la zona horaria indicada en Plantilla de curso.");
+  sheet.getRange(2, 15, editableRows, 1).setNumberFormat("yyyy-mm-dd");
+  sheet.getRange(2, 16, editableRows, 1).setNumberFormat("hh:mm");
   const reviewRule = SpreadsheetApp.newDataValidation().requireValueInList([REVIEW_MODES.DOCUMENT_ONLY, REVIEW_MODES.AI], true).build();
-  sheet.getRange(2, 7, editableRows, 1).setDataValidation(reviewRule);
+  sheet.getRange(2, 9, editableRows, 1).setDataValidation(reviewRule);
 }
 
 
@@ -674,11 +676,14 @@ function ensureTaskColumns_(spreadsheet) {
     headers.push(header);
   });
   const editableRows = Math.max(sheet.getLastRow() + 25, 50);
-  const publishColumn = headers.indexOf("publicarAhora") + 1;
-  if (publishColumn > 0) {
-    sheet.getRange(2, publishColumn, editableRows, 1).insertCheckboxes();
-    sheet.getRange(1, publishColumn).setNote(
-      "Si esta casilla no se activa, la actividad queda como borrador. Si se activa, se publica directamente en Classroom.");
+  ["crearAhora", "enabled", "publicarAhora", "state"].forEach(function (header) {
+    const column = headers.indexOf(header) + 1;
+    if (column > 0) sheet.getRange(2, column, editableRows, 1).insertCheckboxes();
+  });
+  const stateColumn = headers.indexOf("state") + 1;
+  if (stateColumn > 0) {
+    sheet.getRange(1, stateColumn).setNote(
+      "Marcada publica calificaciones/tarea directamente. Sin marcar queda como DRAFT.");
   }
 }
 
@@ -686,7 +691,7 @@ function ensureTaskColumns_(spreadsheet) {
 function removeLegacyTaskReminderColumns_(spreadsheet) {
   const sheet = spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TASKS);
   if (!sheet || sheet.getLastColumn() === 0) return;
-  const legacyHeaders = ["recordatorioCadaDia", "recordatorioCadaDias", "horaRecordatorio"];
+  const legacyHeaders = ["recordatorioCadaDia", "recordatorioCadaDias", "horaRecordatorio", "descripcion"];
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
   for (let index = headers.length - 1; index >= 0; index--) {
     if (legacyHeaders.indexOf(String(headers[index] || "").trim()) !== -1) {
@@ -724,9 +729,9 @@ function applyCourseTemplate_(spreadsheet) {
   replaceArray_(COURSE_SETUP_TEMPLATE.topics, uniqueTopics_(tasks));
   replaceArray_(COURSE_SETUP_TEMPLATE.courseWork, tasks.map(function (task) {
     return { enabled: task.enabled !== false, topicName: task.topic, title: task.nombreActividad,
-      description: task.textoActividad || task.descripcion || "", textoActividad: task.textoActividad || "",
+      description: task.textoActividad || "", textoActividad: task.textoActividad || "",
       linksAdjuntos: parseLinkList_(task.linksAdjuntos), maxPoints: task.maxPoints,
-      state: task.publicarAhora === true ? "PUBLISHED" : "DRAFT",
+      state: (task.state === false || task.publicarAhora === false) ? "DRAFT" : "PUBLISHED",
       dueDate: parseDateParts_(task.dueDate), dueTime: parseTimeParts_(task.dueTime) };
   }));
 }
@@ -746,8 +751,9 @@ function readTaskRows_(spreadsheet) {
 
 function toTaskRule_(task, courseId) {
   return { enabled: task.enabled !== false, courseId: courseId || "", title: task.nombreActividad,
-    reviewMode: task.reviewMode || REVIEW_MODES.DOCUMENT_ONLY, exampleFileId: task.exampleId || "",
-    prompt: task.prompt || "", validGrade: Number(task.validGrade || CONFIG.VALID_GRADE),
+    reviewMode: task.reviewMode || REVIEW_MODES.DOCUMENT_ONLY,
+    exampleFileId: extractDriveId_(task.exampleLink || task.exampleId || ""),
+    exampleFileUrl: task.exampleLink || "", prompt: task.prompt || "", validGrade: Number(task.validGrade || CONFIG.VALID_GRADE),
     invalidGrade: Number(task.invalidGrade || CONFIG.INVALID_GRADE) };
 }
 

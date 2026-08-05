@@ -98,24 +98,26 @@ recorrer los cursos, de modo que esas entradas dejan de consumir recursos. El
 campo rojo se guarda como texto para conservar exactamente IDs largos al usar
 `retirarCursoDelRegistro` de forma individual.
 
-En **Tareas**, cada fila reúne tema, nombre, descripción, modo de revisión,
-ID del ejemplo, prompt personalizado, calificaciones válida e inválida, puntos,
-estado, fecha y hora de entrega. Para añadir actividades, completa sus filas y
-marca **crearAhora** en todas las que quieras preparar. La selección no ejecuta nada
-por sí sola: marca **EJECUTAR** en la plantilla para crearlas juntas. Las
-casillas permanecen seleccionadas como referencia. La columna **publicarAhora**
-controla si la actividad se publica directamente: sin marcar queda como
-borrador y marcada se crea o actualiza como publicada. El bot consulta tanto las
-tareas publicadas como los borradores antes de crear y usa el nombre como
-identificador único de la actividad: si ya existe en Classroom se actualiza y nunca se
-crea un duplicado. La columna **enabled** no crea actividades; habilita únicamente la
-revisión automática de esa tarea. En **Tareas**, `textoActividad` permite
-controlar el texto visible en Classroom para cada actividad sin perder la
-descripcion anterior, y `linksAdjuntos` acepta una o varias ligas separadas por
+En **Tareas**, cada fila reúne selección de creación, habilitación de revisión,
+publicación, estado, tema, nombre, texto de actividad, links adjuntos, modo de
+revisión, liga del ejemplo, prompt personalizado, calificaciones válida e
+inválida, puntos, fecha y hora de entrega. La plantilla marca por defecto las
+primeras columnas de control y la columna **state**; si **state** queda marcada,
+la tarea se crea o actualiza como publicada, y si se desmarca queda como
+**DRAFT**. Para añadir actividades, completa sus filas y marca **EJECUTAR** en la
+plantilla para crearlas juntas. Las casillas permanecen seleccionadas como
+referencia. El bot consulta tanto las tareas publicadas como los borradores antes
+de crear y usa el nombre como identificador único de la actividad: si ya existe
+en Classroom se actualiza y nunca se crea un duplicado. La columna **enabled** no
+crea actividades; habilita únicamente la revisión automática de esa tarea.
+`textoActividad` controla el texto visible en Classroom y reemplaza a la antigua
+columna `descripcion`. `linksAdjuntos` acepta una o varias ligas separadas por
 coma o salto de linea para agregarlas como materiales cuando la tarea se crea
-desde la hoja. En tareas que ya existen, Classroom no permite actualizar
-materiales con `courseWork.patch`; el bot omite esos links y deja un registro
-para que los agregues manualmente si hace falta.
+desde la hoja. `exampleLink` acepta una liga de Drive; el bot extrae el ID del
+archivo automaticamente para usarlo como ejemplo al revisar con OpenAI. En tareas
+que ya existen, Classroom no permite actualizar materiales con
+`courseWork.patch`; el bot omite esos links y deja un registro para que los
+agregues manualmente si hace falta.
 
 En **Plantilla de curso**, `recordatorioInvitacionCadaDias` y
 `horaRecordatorioInvitacion` controlan el seguimiento de invitaciones sin
