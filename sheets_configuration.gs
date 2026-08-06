@@ -71,6 +71,7 @@ function onOpen() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   if (spreadsheet && spreadsheet.getSheetByName(CONFIG_SHEET_NAMES.TEMPLATE)) {
     ensureReminderTriggerField_(spreadsheet);
+    ensureDefaultStateCheckbox_(spreadsheet);
     ensureParticipantColumns_(spreadsheet);
     ensureTaskColumns_(spreadsheet);
   }
@@ -128,6 +129,7 @@ function ejecutarCambiosDelCurso(event) {
   }
 
   ensureReminderTriggerField_(spreadsheet);
+  ensureDefaultStateCheckbox_(spreadsheet);
   ensureParticipantColumns_(spreadsheet);
   ensureTaskColumns_(spreadsheet);
   removeLegacyTaskReminderColumns_(spreadsheet);
@@ -675,7 +677,7 @@ function writeTemplateSheet_(sheet) {
     ["courseSection", template.course.section], ["descriptionHeading", template.course.descriptionHeading],
     ["courseDescription", template.course.description], ["room", template.course.room],
     ["ownerId", template.course.ownerId], ["courseState", template.course.courseState],
-    ["skipExistingCourseWork", template.skipExistingCourseWork], ["defaultState", template.defaultState],
+    ["skipExistingCourseWork", template.skipExistingCourseWork], ["defaultState", template.defaultState !== "DRAFT"],
     ["defaultMaxPoints", template.defaultMaxPoints],
     ["recordatorioInvitacionCadaDias", (template.teacherInvitationReminder || {}).everyDays || 2],
     ["horaRecordatorioInvitacion", (template.teacherInvitationReminder || {}).hour || "09:00"],
@@ -698,6 +700,7 @@ function writeTemplateSheet_(sheet) {
     .setNote("Pega aqui un courseId antiguo y presiona Enter. Se retirara de los recordatorios sin borrar la hoja ni el curso.");
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
+  sheet.getRange("B21").insertCheckboxes().setNote("Marcada: las tareas se asignan/publican (PUBLISHED). Sin marcar: quedan como borrador (DRAFT).");
   configureReminderTriggerFieldRange_(sheet.getRange("B29"));
   configureSubmissionDetectionFieldRange_(sheet.getRange("B30"));
   sheet.getRange("B25").setNote("Texto editable del correo. El bot antepone automaticamente: Estimado(a) docente NOMBRE_PROFESOR.");
@@ -734,6 +737,14 @@ function ensureReminderTriggerField_(spreadsheet) {
   const dryRunRow = addMissingTemplateField_(sheet, values, "modoSimulacion", CONFIG.DRY_RUN === true);
   sheet.getRange(dryRunRow, 2).insertCheckboxes()
     .setNote("Activado: solo simula y no escribe calificaciones. Desactivado: escribe la calificacion en Classroom. Presiona EJECUTAR para aplicar el cambio globalmente.");
+}
+
+/** Convierte defaultState en casilla y conserva el valor de hojas anteriores. */
+function ensureDefaultStateCheckbox_(spreadsheet) {
+  const range = findTemplateFieldRange_(spreadsheet, "defaultState");
+  const published = courseWorkStateFromCheckbox_(parseCell_(range.getValue())) === "PUBLISHED";
+  range.setValue(published).insertCheckboxes()
+    .setNote("Marcada: las tareas se asignan/publican (PUBLISHED). Sin marcar: quedan como borrador (DRAFT).");
 }
 
 function addMissingTemplateField_(sheet, values, fieldName, defaultValue) {
@@ -866,7 +877,7 @@ function applyCourseTemplate_(spreadsheet) {
     descriptionHeading: values.descriptionHeading || "", description: values.courseDescription || "",
     room: values.room || "", ownerId: values.ownerId || "me", courseState: values.courseState || "ACTIVE" };
   COURSE_SETUP_TEMPLATE.skipExistingCourseWork = values.skipExistingCourseWork !== false;
-  COURSE_SETUP_TEMPLATE.defaultState = values.defaultState || "DRAFT";
+  COURSE_SETUP_TEMPLATE.defaultState = courseWorkStateFromCheckbox_(values.defaultState);
   COURSE_SETUP_TEMPLATE.defaultMaxPoints = values.defaultMaxPoints || 100;
   COURSE_SETUP_TEMPLATE.teacherInvitationReminder = Object.assign({}, COURSE_SETUP_TEMPLATE.teacherInvitationReminder, {
     everyDays: nonNegativeInteger_(values.recordatorioInvitacionCadaDias, 2),
@@ -908,6 +919,13 @@ function applyStoredDryRunSetting_() {
   if (stored === null || String(stored).trim() === "") return CONFIG.DRY_RUN;
   CONFIG.DRY_RUN = String(stored).toLowerCase() === "true";
   return CONFIG.DRY_RUN;
+}
+
+/** Traduce la casilla al nombre de estado aceptado por la API de Classroom. */
+function courseWorkStateFromCheckbox_(value) {
+  if (value === true) return "PUBLISHED";
+  const legacyState = String(value || "").trim().toUpperCase();
+  return legacyState === "PUBLISHED" || legacyState === "ASSIGNED" ? "PUBLISHED" : "DRAFT";
 }
 
 function readTemplateFields_(spreadsheet) {

@@ -300,6 +300,12 @@ presiona **EJECUTAR** para que la calificacion se escriba y las ejecuciones
 posteriores omitan esa entrega. `CONFIG.DRY_RUN` sigue siendo el valor inicial
 para hojas nuevas o instalaciones que aún no hayan guardado esta preferencia.
 
+`defaultState` también es una casilla en **Plantilla de curso**. Marcada crea
+las tareas asignadas/publicadas; la API de Classroom denomina ese estado
+`PUBLISHED`. Sin marcar las crea como borrador (`DRAFT`). Las hojas antiguas que
+contenían el texto `PUBLISHED` o `DRAFT` se convierten automáticamente a la
+casilla equivalente sin perder su selección.
+
 ## Checklist de participantes
 
 Los profesores que cargaran evidencias se inscriben en Classroom con el rol de
