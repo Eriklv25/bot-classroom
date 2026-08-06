@@ -852,7 +852,7 @@ function procesarRecordatoriosProgramados() {
     }
     const registry = getCourseSpreadsheetRegistry_();
     logReminderProgress_(control, "REGISTRO_LEIDO", { courses: Object.keys(registry).length });
-    nextIntervalMinutes = getShortestConfiguredReminderTriggerMinutes_();
+    nextIntervalMinutes = getActiveReminderTriggerMinutes_();
     const courseIds = Object.keys(registry);
     for (let courseIndex = 0; courseIndex < courseIds.length; courseIndex++) {
       const courseId = courseIds[courseIndex];

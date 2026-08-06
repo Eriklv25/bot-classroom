@@ -143,9 +143,14 @@ manda un correo cada 5 minutos. Usa 1 o 5 minutos para pruebas rápidas y un
 intervalo mayor para reducir ejecuciones. La siguiente revisión solo se programa
 cuando termina la actual, por lo que las ejecuciones no se acumulan aunque
 Classroom tarde en responder. El cambio se
-aplica al marcar **EJECUTAR**; como Apps Script utiliza un único trigger para
-todos los cursos, el bot adopta el intervalo más corto de todas las hojas
-registradas. El trigger evalúa únicamente estas opciones de **Plantilla de
+aplica al marcar **EJECUTAR**. Apps Script utiliza un único trigger para todos
+los cursos y siempre conserva el intervalo de la hoja donde se presionó
+**EJECUTAR** por última vez. Por ejemplo, si una hoja activa `10` minutos y
+después otra activa `5`, todas las revisiones globales quedan programadas cada
+`5` minutos hasta que se vuelva a ejecutar cualquier hoja con otro valor. El
+resultado de **EJECUTAR** confirma el intervalo global que acaba de quedar
+activo. El trigger evalúa
+únicamente estas opciones de **Plantilla de
 curso** y el bot registra cada envío para no repetirlo durante el periodo
 configurado. No se envían recordatorios individuales configurados por fila de
 **Tareas**.
@@ -165,7 +170,8 @@ fecha actual tampoco está vencida hasta que pase su hora límite; si la tarea n
 tiene `dueTime`, Classroom la considera vencida al terminar el día.
 
 Después de marcar **EJECUTAR**, el bot reemplaza el activador de recordatorios y
-vuelve a iniciar el contador con el intervalo más corto registrado. El resultado
+vuelve a iniciar el contador con el intervalo de esa hoja, reemplazando el que
+hubiera activado anteriormente cualquier otra hoja. El resultado
 de la hoja y los registros indican en cuántos minutos se solicitó la próxima
 revisión. El activador es de una sola ejecución y se vuelve a crear al terminar
 cada revisión; por eso Apps Script lo muestra como un activador basado en tiempo,
