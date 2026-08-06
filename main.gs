@@ -67,6 +67,13 @@ function processPendingSubmissionsBatchWithLockHeld_(startedAt, timer, summary) 
   loadConfigurationFromSpreadsheet(true);
   validateGlobalConfiguration();
 
+  if (CONFIG.DRY_RUN) {
+    console.info(
+      "[DRY_RUN] Modo simulacion activo: no se escribiran calificaciones en Classroom. " +
+      "Las entregas sin calificacion seguiran pendientes y se volveran a detectar en la siguiente ejecucion."
+    );
+  }
+
   const activeTasks = getActiveTaskConfigs();
   console.info("Tareas activas: " + activeTasks.length);
 
@@ -147,7 +154,10 @@ function processOneSubmission(taskConfig, courseWork, submission, summary) {
     const gradingDecision = decideGradeFromEvaluation(evaluation, taskConfig);
 
     if (CONFIG.DRY_RUN) {
-      console.info("[DRY_RUN] Calificacion que se asignaria: " + gradingDecision.grade);
+      console.info(
+        "[DRY_RUN] Calificacion simulada: " + gradingDecision.grade +
+        ". No se escribio ninguna calificacion en Classroom; la entrega se volvera a detectar."
+      );
     } else {
       assignGradeToSubmission(taskConfig, submission.id, gradingDecision.grade);
       console.info("Calificacion asignada: " + gradingDecision.grade);
