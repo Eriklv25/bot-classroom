@@ -290,7 +290,12 @@ se heredan entre tareas. `DOCUMENT_ONLY` valida el archivo sin llamar a OpenAI.
 
 Para escribir calificaciones reales, `CONFIG.DRY_RUN` debe ser `false`. Con
 `true`, el detector encuentra y revisa el flujo, pero solo registra la
-calificacion que habria asignado.
+calificacion que habria asignado: no modifica `draftGrade` ni `assignedGrade`.
+Por eso Classroom sigue devolviendo la entrega como pendiente y el bot vuelve a
+procesarla en cada activacion. El mensaje `Calificacion simulada` en los
+registros confirma que no se califico realmente. Cambia `DRY_RUN` a `false` y
+vuelve a implementar el proyecto para que la calificacion se escriba y las
+ejecuciones posteriores omitan esa entrega.
 
 ## Checklist de participantes
 
