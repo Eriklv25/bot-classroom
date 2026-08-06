@@ -3,7 +3,7 @@
  *
  * Recibe: nada. Se ejecuta manualmente o por trigger.
  * Devuelve: un resumen de la ejecucion para logs y diagnostico.
- * Se usa: como funcion principal programada cada hora.
+ * Se usa: como funcion principal programada por el detector de entregas.
  */
 function processPendingSubmissionsBatch() {
   const startedAt = new Date();
@@ -43,6 +43,19 @@ function processPendingSubmissionsBatch() {
 }
 
 /**
+ * Consulta Classroom con el intervalo global configurado y procesa nuevas entregas.
+ * Apps Script/Classroom no proporciona un activador nativo de tipo "on submit",
+ * por lo que este sondeo es la aproximacion mas cercana a un evento de entrega.
+ */
+function detectarEntregasProgramadas() {
+  try {
+    return processPendingSubmissionsBatch();
+  } finally {
+    scheduleNextSubmissionDetection_();
+  }
+}
+
+/**
  * Ejecuta el lote suponiendo que el llamador ya posee el ScriptLock.
  *
  * El procesador global de recordatorios usa esta variante para conservar el
@@ -62,11 +75,6 @@ function processPendingSubmissionsBatchWithLockHeld_(startedAt, timer, summary) 
 
     if (!hasSafeTimeRemaining(timer)) {
       console.info("Deteniendo lote por limite seguro de tiempo antes de iniciar otra tarea");
-      break;
-    }
-
-    if (summary.processed >= CONFIG.MAX_EVIDENCES_PER_RUN) {
-      console.info("Deteniendo lote por limite de evidencias configurado");
       break;
     }
 
@@ -101,11 +109,6 @@ function processOneConfiguredTask(taskConfig, timer, summary) {
     for (let index = 0; index < pendingSubmissions.length; index++) {
       if (!hasSafeTimeRemaining(timer)) {
         console.info("Deteniendo tarea por limite seguro de tiempo");
-        return;
-      }
-
-      if (summary.processed >= CONFIG.MAX_EVIDENCES_PER_RUN) {
-        console.info("Deteniendo tarea por limite de evidencias del lote");
         return;
       }
 

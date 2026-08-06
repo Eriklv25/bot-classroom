@@ -35,10 +35,6 @@ function validateGlobalConfiguration() {
     throw new Error("CONFIG.SAFETY_MARGIN_MS debe ser menor que CONFIG.MAX_RUNTIME_MS.");
   }
 
-  if (!Number.isFinite(CONFIG.MAX_EVIDENCES_PER_RUN) || CONFIG.MAX_EVIDENCES_PER_RUN < 1) {
-    throw new Error("CONFIG.MAX_EVIDENCES_PER_RUN debe ser un numero mayor o igual a 1.");
-  }
-
   if (!Array.isArray(COURSE_CONFIGS) || !Array.isArray(TASK_RULES)) {
     throw new Error("COURSE_CONFIGS y TASK_RULES deben ser arreglos.");
   }

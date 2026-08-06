@@ -265,6 +265,33 @@ Para incorporar IA posteriormente basta cambiar `reviewMode` de
 `DOCUMENT_ONLY` a `AI` y, si se desea una comparacion, agregar
 `exampleFileId`.
 
+## Deteccion y calificacion de entregas
+
+Google Classroom no expone a Apps Script un activador que se dispare exactamente
+al presionar **Entregar**. El bot instala un detector global de una sola
+ejecucion que consulta Classroom y se vuelve a programar al terminar. En
+**Plantilla de curso**, `intervaloDeteccionEntregasMinutos` permite elegir 1, 5,
+10, 15, 30, 60, 120, 240, 360, 480 o 720 minutos. Al marcar **EJECUTAR**, el
+valor de esa hoja reemplaza el intervalo global anterior, sin importar qué hoja
+lo hubiera establecido. Solo toma
+entregas con estado `TURNED_IN` que aun no tengan calificacion en borrador ni
+asignada; adjuntar un archivo sin presionar **Entregar** no inicia la revision.
+
+En cada activacion se procesan tantas entregas como permita el margen seguro de
+la ejecucion de Apps Script. No existe un limite fijo de una evidencia por
+recorrido. Si el tiempo se termina, las entregas restantes conservan su estado
+sin calificar y se retoman automáticamente en la siguiente activacion.
+
+Cada entrega conserva la regla de su propia fila en **Tareas**. Si esa fila tiene
+`reviewMode=AI` y un `prompt` no vacio, OpenAI recibe ese prompt personalizado.
+Si el `prompt` de esa fila esta vacio, `buildEvaluationPrompt` vuelve al prompt
+general, aunque la entrega anterior haya usado uno personalizado. Las reglas no
+se heredan entre tareas. `DOCUMENT_ONLY` valida el archivo sin llamar a OpenAI.
+
+Para escribir calificaciones reales, `CONFIG.DRY_RUN` debe ser `false`. Con
+`true`, el detector encuentra y revisa el flujo, pero solo registra la
+calificacion que habria asignado.
+
 ## Checklist de participantes
 
 Los profesores que cargaran evidencias se inscriben en Classroom con el rol de

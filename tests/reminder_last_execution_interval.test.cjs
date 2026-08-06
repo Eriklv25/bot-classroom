@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const vm = require("node:vm");
 
 const source = fs.readFileSync("sheets_configuration.gs", "utf8");
-assert.match(source, /permanecera activo hasta que se presione EJECUTAR en otra hoja/,
+assert.match(source, /permaneceran activos hasta que se presione EJECUTAR en otra hoja/,
   "El resultado debe explicar que la ultima ejecucion controla el intervalo global");
 assert.match(source, /la ultima hoja ejecutada prevalece/,
   "La nota del campo debe describir la misma regla que aplica el codigo");

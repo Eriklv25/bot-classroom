@@ -19,6 +19,9 @@ const REMINDER_TRIGGER_MINIMUM_DELAY_MS = 60 * 1000;
 // Un trigger instalable dispone normalmente de seis minutos. Se corta antes para
 // que alcance a registrar el diagnostico, liberar el lock y crear el siguiente.
 const REMINDER_SAFE_RUNTIME_MS = 4 * 60 * 1000;
+const SUBMISSION_DETECTION_HANDLER = "detectarEntregasProgramadas";
+const SUBMISSION_DETECTION_INTERVAL_PROPERTY = "SUBMISSION_DETECTION_INTERVAL_MINUTES";
+const DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES = 5;
 
 const COURSE_EXECUTION_CONTROL = {
   CHECKBOX: "B5",
@@ -169,15 +172,20 @@ function ejecutarCambiosDelCurso(event) {
     const requestedReminderMinutes = normalizeReminderTriggerMinutes_(
       readTemplateFields_(spreadsheet).intervaloTriggerRecordatoriosMinutos,
       DEFAULT_REMINDER_TRIGGER_MINUTES);
+    const requestedSubmissionMinutes = normalizeReminderTriggerMinutes_(
+      readTemplateFields_(spreadsheet).intervaloDeteccionEntregasMinutos,
+      DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES);
     const nextReminderMinutes = requestedReminderMinutes;
     scheduleNextReminderRun_(nextReminderMinutes);
+    scheduleNextSubmissionDetection_(requestedSubmissionMinutes);
     console.info("Proxima revision de recordatorios programada en aproximadamente " +
       nextReminderMinutes + " minuto(s). Handler=procesarRecordatoriosProgramados; " +
       "esta fue la ultima hoja en ejecutar");
     setCourseExecutionStatus_(templateSheet, "COMPLETADO",
       (created ? "Curso creado" : "Curso actualizado") + ": " + course.name + " (" + courseId +"). " +
       "Proxima revision de recordatorios en aproximadamente " + nextReminderMinutes + " minuto(s). " +
-      "Este intervalo global permanecera activo hasta que se presione EJECUTAR en otra hoja.");
+      "Proxima deteccion de entregas en aproximadamente " + requestedSubmissionMinutes + " minuto(s). " +
+      "Estos intervalos globales permaneceran activos hasta que se presione EJECUTAR en otra hoja.");
     return { course: course, created: created, setup: setup, studentInvitations: invitations,
       nextReminderMinutes: nextReminderMinutes };
   } catch (error) {
@@ -266,6 +274,59 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
     properties.setProperty(REMINDER_TRIGGER_PROPERTY, String(intervalMinutes));
     properties.setProperty(REMINDER_TRIGGER_MODE_PROPERTY, REMINDER_TRIGGER_MODE);
   }
+  ensureSubmissionDetectionTrigger_();
+}
+
+/** Conserva un unico detector global; Classroom no ofrece un evento al entregar. */
+function ensureSubmissionDetectionTrigger_() {
+  const projectTriggers = ScriptApp.getProjectTriggers();
+  // Migra el activador horario anterior para que no existan dos recorridos de
+  // calificacion compitiendo por las mismas entregas.
+  projectTriggers.filter(function (trigger) {
+    return trigger.getHandlerFunction() === "processPendingSubmissionsBatch" &&
+      trigger.getEventType() === ScriptApp.EventType.CLOCK;
+  }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+  const triggers = projectTriggers.filter(function (trigger) {
+    return trigger.getHandlerFunction() === SUBMISSION_DETECTION_HANDLER &&
+      trigger.getEventType() === ScriptApp.EventType.CLOCK;
+  });
+  triggers.slice(1).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+  if (!triggers.length) createSubmissionDetectionTrigger_(getActiveSubmissionDetectionMinutes_());
+}
+
+/** Programa la siguiente consulta de entregas con el intervalo global activo. */
+function createSubmissionDetectionTrigger_(intervalMinutes) {
+  return ScriptApp.newTrigger(SUBMISSION_DETECTION_HANDLER).timeBased()
+    .after(intervalMinutes * 60 * 1000).create();
+}
+
+/** Reemplaza el detector consumido por su siguiente ejecucion. */
+function scheduleNextSubmissionDetection_(intervalMinutes) {
+  const activeInterval = normalizeReminderTriggerMinutes_(
+    intervalMinutes || getActiveSubmissionDetectionMinutes_(),
+    DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES);
+  ScriptApp.getProjectTriggers().filter(function (trigger) {
+    return trigger.getHandlerFunction() === SUBMISSION_DETECTION_HANDLER &&
+      trigger.getEventType() === ScriptApp.EventType.CLOCK;
+  }).forEach(function (trigger) { ScriptApp.deleteTrigger(trigger); });
+  PropertiesService.getScriptProperties().setProperty(
+    SUBMISSION_DETECTION_INTERVAL_PROPERTY, String(activeInterval));
+  return createSubmissionDetectionTrigger_(activeInterval);
+}
+
+/** Lee el intervalo elegido por la ultima hoja donde se presiono EJECUTAR. */
+function getActiveSubmissionDetectionMinutes_(fallbackSpreadsheet) {
+  const stored = PropertiesService.getScriptProperties().getProperty(
+    SUBMISSION_DETECTION_INTERVAL_PROPERTY);
+  if (stored !== null && String(stored).trim() !== "") {
+    return normalizeReminderTriggerMinutes_(stored, DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES);
+  }
+  if (fallbackSpreadsheet) {
+    return normalizeReminderTriggerMinutes_(
+      readTemplateFields_(fallbackSpreadsheet).intervaloDeteccionEntregasMinutos,
+      DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES);
+  }
+  return DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES;
 }
 
 function cleanupConfigurationEditTriggers_(currentSpreadsheetId) {
@@ -619,6 +680,7 @@ function writeTemplateSheet_(sheet) {
     ["horaRecordatorioPendientes", (template.pendingActivitiesReminder || {}).hour || "10:00"],
     ["textoRecordatorioPendientes", (template.pendingActivitiesReminder || {}).bodyIntro || "Estas actividades vencidas siguen pendientes:"],
     ["intervaloTriggerRecordatoriosMinutos", template.reminderTriggerEveryMinutes || DEFAULT_REMINDER_TRIGGER_MINUTES],
+    ["intervaloDeteccionEntregasMinutos", template.submissionDetectionEveryMinutes || DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES],
     ["zonaHoraria", COURSE_SHEET_TIME_ZONE],
     ["carpetaAlmacenamiento", ""]
   ];
@@ -632,10 +694,11 @@ function writeTemplateSheet_(sheet) {
   sheet.getRange("A11:B11").setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
   sheet.getRange("B20").insertCheckboxes();
   configureReminderTriggerFieldRange_(sheet.getRange("B29"));
+  configureSubmissionDetectionFieldRange_(sheet.getRange("B30"));
   sheet.getRange("B25").setNote("Texto editable del correo. El bot antepone automaticamente: Estimado(a) docente NOMBRE_PROFESOR.");
   sheet.getRange("B28").setNote("Texto editable del correo. El bot antepone automaticamente: Estimado(a) docente NOMBRE_PROFESOR.");
-  sheet.getRange("B30").setNote("Zona horaria usada para todas las horas de esta hoja: Ciudad de Mexico.");
-  sheet.getRange("B31").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
+  sheet.getRange("B31").setNote("Zona horaria usada para todas las horas de esta hoja: Ciudad de Mexico.");
+  sheet.getRange("B32").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
   sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 620); sheet.getDataRange().setWrap(true);
 }
 
@@ -659,6 +722,9 @@ function ensureReminderTriggerField_(spreadsheet) {
       "intervaloTriggerRecordatoriosMinutos", DEFAULT_REMINDER_TRIGGER_MINUTES);
   }
   configureReminderTriggerFieldRange_(sheet.getRange(fieldRow, 2));
+  const submissionRow = addMissingTemplateField_(sheet, values,
+    "intervaloDeteccionEntregasMinutos", DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES);
+  configureSubmissionDetectionFieldRange_(sheet.getRange(submissionRow, 2));
 }
 
 function addMissingTemplateField_(sheet, values, fieldName, defaultValue) {
@@ -679,6 +745,16 @@ function configureReminderTriggerFieldRange_(range) {
       "No significa que enviara correos cada ese numero de minutos: las horas, los dias y la proteccion contra duplicados siguen aplicando.",
       "Ejemplo: con 5, revisa aproximadamente cada 5 minutos; si el correo esta configurado para las 09:00, antes de las 09:00 no lo envia.",
       "Este valor pasa a ser el intervalo global al presionar EJECUTAR; la ultima hoja ejecutada prevalece."
+    ].join("\n"));
+}
+
+function configureSubmissionDetectionFieldRange_(range) {
+  range.setDataValidation(SpreadsheetApp.newDataValidation()
+    .requireValueInList(REMINDER_TRIGGER_INTERVALS_MINUTES.map(String), true).build())
+    .setNote([
+      "Cada cuantos minutos el bot consulta Classroom para detectar nuevas entregas TURNED_IN.",
+      "El valor pasa a ser global al presionar EJECUTAR; la ultima hoja ejecutada prevalece.",
+      "Apps Script ejecuta el detector de forma aproximada y puede demorarse algunos minutos."
     ].join("\n"));
 }
 
@@ -794,6 +870,8 @@ function applyCourseTemplate_(spreadsheet) {
   });
   COURSE_SETUP_TEMPLATE.reminderTriggerEveryMinutes = normalizeReminderTriggerMinutes_(
     values.intervaloTriggerRecordatoriosMinutos, DEFAULT_REMINDER_TRIGGER_MINUTES);
+  COURSE_SETUP_TEMPLATE.submissionDetectionEveryMinutes = normalizeReminderTriggerMinutes_(
+    values.intervaloDeteccionEntregasMinutos, DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES);
   replaceArray_(COURSE_SETUP_TEMPLATE.students,
     readTable_(spreadsheet, CONFIG_SHEET_NAMES.STUDENTS).filter(function (participant) {
       return String(participant.name || "").trim() || String(participant.email || "").trim();
