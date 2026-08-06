@@ -1431,7 +1431,7 @@ function getPendingSubmissionsForTask(taskConfig, courseWork) {
     })
     .sort(compareSubmissionsByUpdateTime);
 
-  console.info("Pendientes sin assignedGrade en " + courseWork.title + ": " + pending.length);
+  console.info("Pendientes sin draftGrade ni assignedGrade en " + courseWork.title + ": " + pending.length);
   return pending;
 }
 

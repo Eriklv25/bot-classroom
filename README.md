@@ -288,9 +288,23 @@ Si el `prompt` de esa fila esta vacio, `buildEvaluationPrompt` vuelve al prompt
 general, aunque la entrega anterior haya usado uno personalizado. Las reglas no
 se heredan entre tareas. `DOCUMENT_ONLY` valida el archivo sin llamar a OpenAI.
 
-Para escribir calificaciones reales, `CONFIG.DRY_RUN` debe ser `false`. Con
-`true`, el detector encuentra y revisa el flujo, pero solo registra la
-calificacion que habria asignado.
+El modo se controla con la casilla `modoSimulacion` de **Plantilla de curso**.
+Después de cambiarla, marca **EJECUTAR** para aplicarla globalmente; si existen
+varias hojas de curso, prevalece la última donde se presionó **EJECUTAR**. Con
+la casilla activada, el detector encuentra y revisa el flujo, pero solo registra la
+calificacion que habria asignado: no modifica `draftGrade` ni `assignedGrade`.
+Por eso Classroom sigue devolviendo la entrega como pendiente y el bot vuelve a
+procesarla en cada activacion. El mensaje `Calificacion simulada` en los
+registros confirma que no se califico realmente. Desactiva `modoSimulacion` y
+presiona **EJECUTAR** para que la calificacion se escriba y las ejecuciones
+posteriores omitan esa entrega. `CONFIG.DRY_RUN` sigue siendo el valor inicial
+para hojas nuevas o instalaciones que aún no hayan guardado esta preferencia.
+
+`defaultState` también es una casilla en **Plantilla de curso**. Marcada crea
+las tareas asignadas/publicadas; la API de Classroom denomina ese estado
+`PUBLISHED`. Sin marcar las crea como borrador (`DRAFT`). Las hojas antiguas que
+contenían el texto `PUBLISHED` o `DRAFT` se convierten automáticamente a la
+casilla equivalente sin perder su selección.
 
 ## Checklist de participantes
 
