@@ -143,9 +143,14 @@ manda un correo cada 5 minutos. Usa 1 o 5 minutos para pruebas rápidas y un
 intervalo mayor para reducir ejecuciones. La siguiente revisión solo se programa
 cuando termina la actual, por lo que las ejecuciones no se acumulan aunque
 Classroom tarde en responder. El cambio se
-aplica al marcar **EJECUTAR**; como Apps Script utiliza un único trigger para
-todos los cursos, el bot adopta el intervalo más corto de todas las hojas
-registradas. El trigger evalúa únicamente estas opciones de **Plantilla de
+aplica al marcar **EJECUTAR**. Apps Script utiliza un único trigger para todos
+los cursos y siempre conserva el intervalo de la hoja donde se presionó
+**EJECUTAR** por última vez. Por ejemplo, si una hoja activa `10` minutos y
+después otra activa `5`, todas las revisiones globales quedan programadas cada
+`5` minutos hasta que se vuelva a ejecutar cualquier hoja con otro valor. El
+resultado de **EJECUTAR** confirma el intervalo global que acaba de quedar
+activo. El trigger evalúa
+únicamente estas opciones de **Plantilla de
 curso** y el bot registra cada envío para no repetirlo durante el periodo
 configurado. No se envían recordatorios individuales configurados por fila de
 **Tareas**.
@@ -165,7 +170,8 @@ fecha actual tampoco está vencida hasta que pase su hora límite; si la tarea n
 tiene `dueTime`, Classroom la considera vencida al terminar el día.
 
 Después de marcar **EJECUTAR**, el bot reemplaza el activador de recordatorios y
-vuelve a iniciar el contador con el intervalo más corto registrado. El resultado
+vuelve a iniciar el contador con el intervalo de esa hoja, reemplazando el que
+hubiera activado anteriormente cualquier otra hoja. El resultado
 de la hoja y los registros indican en cuántos minutos se solicitó la próxima
 revisión. El activador es de una sola ejecución y se vuelve a crear al terminar
 cada revisión; por eso Apps Script lo muestra como un activador basado en tiempo,
@@ -258,6 +264,33 @@ Cada entrada de `TASK_RULES` funciona como un switch independiente mediante
 Para incorporar IA posteriormente basta cambiar `reviewMode` de
 `DOCUMENT_ONLY` a `AI` y, si se desea una comparacion, agregar
 `exampleFileId`.
+
+## Deteccion y calificacion de entregas
+
+Google Classroom no expone a Apps Script un activador que se dispare exactamente
+al presionar **Entregar**. El bot instala un detector global de una sola
+ejecucion que consulta Classroom y se vuelve a programar al terminar. En
+**Plantilla de curso**, `intervaloDeteccionEntregasMinutos` permite elegir 1, 5,
+10, 15, 30, 60, 120, 240, 360, 480 o 720 minutos. Al marcar **EJECUTAR**, el
+valor de esa hoja reemplaza el intervalo global anterior, sin importar qué hoja
+lo hubiera establecido. Solo toma
+entregas con estado `TURNED_IN` que aun no tengan calificacion en borrador ni
+asignada; adjuntar un archivo sin presionar **Entregar** no inicia la revision.
+
+En cada activacion se procesan tantas entregas como permita el margen seguro de
+la ejecucion de Apps Script. No existe un limite fijo de una evidencia por
+recorrido. Si el tiempo se termina, las entregas restantes conservan su estado
+sin calificar y se retoman automáticamente en la siguiente activacion.
+
+Cada entrega conserva la regla de su propia fila en **Tareas**. Si esa fila tiene
+`reviewMode=AI` y un `prompt` no vacio, OpenAI recibe ese prompt personalizado.
+Si el `prompt` de esa fila esta vacio, `buildEvaluationPrompt` vuelve al prompt
+general, aunque la entrega anterior haya usado uno personalizado. Las reglas no
+se heredan entre tareas. `DOCUMENT_ONLY` valida el archivo sin llamar a OpenAI.
+
+Para escribir calificaciones reales, `CONFIG.DRY_RUN` debe ser `false`. Con
+`true`, el detector encuentra y revisa el flujo, pero solo registra la
+calificacion que habria asignado.
 
 ## Checklist de participantes
 

@@ -852,7 +852,7 @@ function procesarRecordatoriosProgramados() {
     }
     const registry = getCourseSpreadsheetRegistry_();
     logReminderProgress_(control, "REGISTRO_LEIDO", { courses: Object.keys(registry).length });
-    nextIntervalMinutes = getShortestConfiguredReminderTriggerMinutes_();
+    nextIntervalMinutes = getActiveReminderTriggerMinutes_();
     const courseIds = Object.keys(registry);
     for (let courseIndex = 0; courseIndex < courseIds.length; courseIndex++) {
       const courseId = courseIds[courseIndex];
@@ -2229,13 +2229,9 @@ function getLogSheet() {
 function createHourlyTrigger() {
   loadConfigurationFromSpreadsheet();
   deleteClassroomBotTriggers();
-
-  ScriptApp.newTrigger("processPendingSubmissionsBatch")
-    .timeBased()
-    .everyHours(CONFIG.TRIGGER_EVERY_HOURS)
-    .create();
-
-  console.info("Trigger creado cada " + CONFIG.TRIGGER_EVERY_HOURS + " hora(s).");
+  scheduleNextSubmissionDetection_(getActiveSubmissionDetectionMinutes_());
+  console.info("Detector de entregas programado en aproximadamente " +
+    getActiveSubmissionDetectionMinutes_() + " minuto(s).");
 }
 
 /**
@@ -2250,7 +2246,8 @@ function deleteClassroomBotTriggers() {
   let deleted = 0;
 
   triggers.forEach(function (trigger) {
-    if (trigger.getHandlerFunction() === "processPendingSubmissionsBatch") {
+    if (trigger.getHandlerFunction() === "processPendingSubmissionsBatch" ||
+        trigger.getHandlerFunction() === SUBMISSION_DETECTION_HANDLER) {
       ScriptApp.deleteTrigger(trigger);
       deleted++;
     }
