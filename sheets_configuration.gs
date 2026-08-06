@@ -22,6 +22,7 @@ const REMINDER_SAFE_RUNTIME_MS = 4 * 60 * 1000;
 const SUBMISSION_DETECTION_HANDLER = "detectarEntregasProgramadas";
 const SUBMISSION_DETECTION_INTERVAL_PROPERTY = "SUBMISSION_DETECTION_INTERVAL_MINUTES";
 const DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES = 5;
+const DRY_RUN_PROPERTY = "DRY_RUN";
 
 const COURSE_EXECUTION_CONTROL = {
   CHECKBOX: "B5",
@@ -140,6 +141,7 @@ function ejecutarCambiosDelCurso(event) {
   try {
     setCourseExecutionStatus_(templateSheet, "EJECUTANDO", "Leyendo la configuracion...");
     loadConfigurationFromSpecificSpreadsheet_(spreadsheet);
+    saveDryRunSetting_(CONFIG.DRY_RUN);
     ensureCourseConfigurationTrigger_(spreadsheet);
     const template = COURSE_SETUP_TEMPLATE;
     const selectedTaskTitles = readTaskRows_(spreadsheet).filter(function (task) {
@@ -185,7 +187,8 @@ function ejecutarCambiosDelCurso(event) {
       (created ? "Curso creado" : "Curso actualizado") + ": " + course.name + " (" + courseId +"). " +
       "Proxima revision de recordatorios en aproximadamente " + nextReminderMinutes + " minuto(s). " +
       "Proxima deteccion de entregas en aproximadamente " + requestedSubmissionMinutes + " minuto(s). " +
-      "Estos intervalos globales permaneceran activos hasta que se presione EJECUTAR en otra hoja.");
+      "Modo simulacion: " + (CONFIG.DRY_RUN ? "ACTIVO" : "INACTIVO") + ". " +
+      "Estos ajustes globales permaneceran activos hasta que se presione EJECUTAR en otra hoja.");
     return { course: course, created: created, setup: setup, studentInvitations: invitations,
       nextReminderMinutes: nextReminderMinutes };
   } catch (error) {
@@ -595,6 +598,7 @@ function verEnlaceHojaDeConfiguracion() { return getConfigurationSpreadsheetUrl(
 
 /** Carga todas las hojas registradas para que el proceso programado revise sus tareas. */
 function loadConfigurationFromSpreadsheet(loadAllCourseSpreadsheets) {
+  applyStoredDryRunSetting_();
   const registry = getCourseSpreadsheetRegistry_();
   const ids = Object.keys(registry);
   if (loadAllCourseSpreadsheets === true && ids.length) {
@@ -682,7 +686,8 @@ function writeTemplateSheet_(sheet) {
     ["intervaloTriggerRecordatoriosMinutos", template.reminderTriggerEveryMinutes || DEFAULT_REMINDER_TRIGGER_MINUTES],
     ["intervaloDeteccionEntregasMinutos", template.submissionDetectionEveryMinutes || DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES],
     ["zonaHoraria", COURSE_SHEET_TIME_ZONE],
-    ["carpetaAlmacenamiento", ""]
+    ["carpetaAlmacenamiento", ""],
+    ["modoSimulacion", CONFIG.DRY_RUN === true]
   ];
   replaceSheetValues_(sheet, rows);
   sheet.getRange("A1:B1").merge().setBackground("#1a73e8").setFontColor("white").setFontWeight("bold");
@@ -699,6 +704,7 @@ function writeTemplateSheet_(sheet) {
   sheet.getRange("B28").setNote("Texto editable del correo. El bot antepone automaticamente: Estimado(a) docente NOMBRE_PROFESOR.");
   sheet.getRange("B31").setNote("Zona horaria usada para todas las horas de esta hoja: Ciudad de Mexico.");
   sheet.getRange("B32").setNote("Opcional. Usa el menu Bot Classroom > Elegir carpeta de almacenamiento o pega aqui la URL de una carpeta de Google Drive.");
+  sheet.getRange("B33").insertCheckboxes().setNote("Activado: solo simula y no escribe calificaciones. Desactivado: escribe la calificacion en Classroom. Presiona EJECUTAR para aplicar el cambio globalmente.");
   sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 620); sheet.getDataRange().setWrap(true);
 }
 
@@ -725,6 +731,9 @@ function ensureReminderTriggerField_(spreadsheet) {
   const submissionRow = addMissingTemplateField_(sheet, values,
     "intervaloDeteccionEntregasMinutos", DEFAULT_SUBMISSION_DETECTION_INTERVAL_MINUTES);
   configureSubmissionDetectionFieldRange_(sheet.getRange(submissionRow, 2));
+  const dryRunRow = addMissingTemplateField_(sheet, values, "modoSimulacion", CONFIG.DRY_RUN === true);
+  sheet.getRange(dryRunRow, 2).insertCheckboxes()
+    .setNote("Activado: solo simula y no escribe calificaciones. Desactivado: escribe la calificacion en Classroom. Presiona EJECUTAR para aplicar el cambio globalmente.");
 }
 
 function addMissingTemplateField_(sheet, values, fieldName, defaultValue) {
@@ -851,6 +860,7 @@ function removeLegacyTaskReminderColumns_(spreadsheet) {
 
 function applyCourseTemplate_(spreadsheet) {
   const values = readTemplateFields_(spreadsheet);
+  CONFIG.DRY_RUN = values.modoSimulacion !== false;
   COURSE_SETUP_TEMPLATE.existingCourseId = values.existingCourseId || "";
   COURSE_SETUP_TEMPLATE.course = { name: values.courseName, section: values.courseSection || "",
     descriptionHeading: values.descriptionHeading || "", description: values.courseDescription || "",
@@ -885,6 +895,19 @@ function applyCourseTemplate_(spreadsheet) {
       state: (task.state === false || task.publicarAhora === false) ? "DRAFT" : "PUBLISHED",
       dueDate: parseDateParts_(task.dueDate), dueTime: parseTimeParts_(task.dueTime) };
   }));
+}
+
+/** Guarda el modo elegido por la ultima Plantilla de curso ejecutada. */
+function saveDryRunSetting_(dryRun) {
+  PropertiesService.getScriptProperties().setProperty(DRY_RUN_PROPERTY, dryRun === true ? "true" : "false");
+}
+
+/** Restaura el modo global antes de cargar todas las hojas registradas. */
+function applyStoredDryRunSetting_() {
+  const stored = PropertiesService.getScriptProperties().getProperty(DRY_RUN_PROPERTY);
+  if (stored === null || String(stored).trim() === "") return CONFIG.DRY_RUN;
+  CONFIG.DRY_RUN = String(stored).toLowerCase() === "true";
+  return CONFIG.DRY_RUN;
 }
 
 function readTemplateFields_(spreadsheet) {
