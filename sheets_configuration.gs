@@ -166,13 +166,18 @@ function ejecutarCambiosDelCurso(event) {
     // fue creado con la configuracion anterior. Al terminar EJECUTAR se reemplaza
     // siempre para que el contador (por ejemplo, cinco minutos) empiece ahora y
     // exista una proxima ejecucion verificable.
-    const nextReminderMinutes = getShortestConfiguredReminderTriggerMinutes_(spreadsheet);
+    const requestedReminderMinutes = normalizeReminderTriggerMinutes_(
+      readTemplateFields_(spreadsheet).intervaloTriggerRecordatoriosMinutos,
+      DEFAULT_REMINDER_TRIGGER_MINUTES);
+    const nextReminderMinutes = requestedReminderMinutes;
     scheduleNextReminderRun_(nextReminderMinutes);
     console.info("Proxima revision de recordatorios programada en aproximadamente " +
-      nextReminderMinutes + " minuto(s). Handler=procesarRecordatoriosProgramados");
+      nextReminderMinutes + " minuto(s). Handler=procesarRecordatoriosProgramados; " +
+      "esta fue la ultima hoja en ejecutar");
     setCourseExecutionStatus_(templateSheet, "COMPLETADO",
       (created ? "Curso creado" : "Curso actualizado") + ": " + course.name + " (" + courseId +"). " +
-      "Proxima revision de recordatorios en aproximadamente " + nextReminderMinutes + " minuto(s).");
+      "Proxima revision de recordatorios en aproximadamente " + nextReminderMinutes + " minuto(s). " +
+      "Este intervalo global permanecera activo hasta que se presione EJECUTAR en otra hoja.");
     return { course: course, created: created, setup: setup, studentInvitations: invitations,
       nextReminderMinutes: nextReminderMinutes };
   } catch (error) {
@@ -250,7 +255,7 @@ function ensureCourseConfigurationTrigger_(spreadsheet) {
     return trigger.getHandlerFunction() === "procesarRecordatoriosProgramados" &&
       trigger.getEventType() === ScriptApp.EventType.CLOCK;
   });
-  const intervalMinutes = getShortestConfiguredReminderTriggerMinutes_(spreadsheet);
+  const intervalMinutes = getActiveReminderTriggerMinutes_(spreadsheet);
   const properties = PropertiesService.getScriptProperties();
   const currentInterval = Number(properties.getProperty(REMINDER_TRIGGER_PROPERTY));
   const currentMode = properties.getProperty(REMINDER_TRIGGER_MODE_PROPERTY);
@@ -328,30 +333,18 @@ function scheduleNextReminderRun_(intervalMinutes) {
     REMINDER_TRIGGER_MODE_PROPERTY, REMINDER_TRIGGER_MODE);
 }
 
-/** Usa la frecuencia mas corta para que una hoja no retrase a las demas. */
-function getShortestConfiguredReminderTriggerMinutes_(currentSpreadsheet) {
-  const spreadsheetIds = [];
-  const addId = function (id) {
-    if (id && spreadsheetIds.indexOf(id) === -1) spreadsheetIds.push(id);
-  };
-  if (currentSpreadsheet) addId(currentSpreadsheet.getId());
-  const registry = getCourseSpreadsheetRegistry_();
-  Object.keys(registry).forEach(function (courseId) { addId(registry[courseId]); });
-
-  const intervals = spreadsheetIds.map(function (spreadsheetId) {
-    try {
-      const spreadsheet = currentSpreadsheet && currentSpreadsheet.getId() === spreadsheetId
-        ? currentSpreadsheet : SpreadsheetApp.openById(spreadsheetId);
-      return normalizeReminderTriggerMinutes_(
-        readTemplateFields_(spreadsheet).intervaloTriggerRecordatoriosMinutos,
-        DEFAULT_REMINDER_TRIGGER_MINUTES
-      );
-    } catch (error) {
-      console.info("No se pudo leer el intervalo del trigger en la hoja " + spreadsheetId + ": " + errorToPlainText(error));
-      return null;
-    }
-  }).filter(function (interval) { return interval !== null; });
-  return intervals.length ? Math.min.apply(null, intervals) : DEFAULT_REMINDER_TRIGGER_MINUTES;
+/** Conserva el intervalo elegido por la ultima hoja donde se presiono EJECUTAR. */
+function getActiveReminderTriggerMinutes_(fallbackSpreadsheet) {
+  const storedInterval = PropertiesService.getScriptProperties().getProperty(REMINDER_TRIGGER_PROPERTY);
+  if (storedInterval !== null && String(storedInterval).trim() !== "") {
+    return normalizeReminderTriggerMinutes_(storedInterval, DEFAULT_REMINDER_TRIGGER_MINUTES);
+  }
+  if (fallbackSpreadsheet) {
+    return normalizeReminderTriggerMinutes_(
+      readTemplateFields_(fallbackSpreadsheet).intervaloTriggerRecordatoriosMinutos,
+      DEFAULT_REMINDER_TRIGGER_MINUTES);
+  }
+  return DEFAULT_REMINDER_TRIGGER_MINUTES;
 }
 
 function setCourseExecutionStatus_(sheet, status, result) {
@@ -685,7 +678,7 @@ function configureReminderTriggerFieldRange_(range) {
       "Cada cuantos minutos el bot despierta para COMPROBAR si corresponde enviar recordatorios.",
       "No significa que enviara correos cada ese numero de minutos: las horas, los dias y la proteccion contra duplicados siguen aplicando.",
       "Ejemplo: con 5, revisa aproximadamente cada 5 minutos; si el correo esta configurado para las 09:00, antes de las 09:00 no lo envia.",
-      "Si hay varios cursos, se usa el intervalo mas corto configurado."
+      "Este valor pasa a ser el intervalo global al presionar EJECUTAR; la ultima hoja ejecutada prevalece."
     ].join("\n"));
 }
 
